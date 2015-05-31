@@ -12,7 +12,7 @@ access the Micro-SD card through added stk500-based commands.
 All of this is done with a clear progress indicator on a ILI9325/ILI9328
 TFT LCD screen.
 
-# Added features
+## Added features
 These features have been added to the stk500v2 protocol spec:
 * Minimal Micro-SD library used to navigate FAT16/FAT32 filesystems
 * Intel HEX/Binary parsing/saving logic
@@ -31,7 +31,7 @@ These features have been added to the stk500v2 protocol spec:
   * CMD_PROGRAM_SD_FAT_ISP(0xE9): Write 512-byte FAT-table to M-SD
 * Under 8192 program flash size to fit in ATMEGA2560 bootloader area
 
-# Removed features
+## Removed features
 These features from the stk500v2 protocol spec are not supported:
 * Lock/Fuse bit programming not supported
 * Monitor mode not available
@@ -39,24 +39,24 @@ These features from the stk500v2 protocol spec are not supported:
 * Flash wiping not supported
 * Not all STK parameter commands are supported
 
-# Compilation notes
+## Compilation notes
 Please see the main phoenboot.cpp for important build parameters.
 This project is developed and compiled using Atmel Studio (6.2).
 The compiled HEX file of the bootloader can be found in the Debug folder.
 
-# Links
+## Links
 * [Our website](http://phoenard.com)
 * [Phoenard Arduino library](https://github.com/Phoenard/Phoenard)
 * [Phoenard Toolkit bootloader interface](https://github.com/Phoenard/Phoenard-Toolkit)
 * [Basic operation instructions](http://phoenard.com/basic-operation/)
 
-# Version history
+## Version history
 Current version: v1.00
 
 Version is updated with every major design or feature change.
 * v1.00 - Initial version
 
-# License
+## License
 
 The MIT License (MIT)
 
