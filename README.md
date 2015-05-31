@@ -39,6 +39,11 @@ These features from the stk500v2 protocol spec are not supported:
 * Flash wiping not supported
 * Not all STK parameter commands are supported
 
+# Compilation notes
+Please see the main phoenboot.cpp for important build parameters.
+This project is developed and compiled using Atmel Studio (6.2).
+The compiled HEX file of the bootloader can be found in the Debug folder.
+
 # Links
 * [Our website](http://phoenard.com)
 * [Phoenard Arduino library](https://github.com/Phoenard/Phoenard)
