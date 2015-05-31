@@ -1,31 +1,9 @@
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# atsuo file is a temporary file caching user settings
+*.atsuo
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
+# Debug folder, excluding final hex file
+phoenboot/Debug/*
+!phoenboot/Debug/phoenboot.hex
 
 # =========================
 # Operating System Files
