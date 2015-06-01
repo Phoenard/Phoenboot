@@ -164,7 +164,7 @@ THE SOFTWARE.
 #define ICON_TO_SD             (2 << ICON_DATA_SHIFT)
 #define ICON_TO_NONE           (4 << ICON_DATA_SHIFT)
 #define ICON_PCIDLE            (ICON_FROM_COMPUTER | ICON_TO_NONE)
-#define ICON_FORCEDRAW         (1 << 6)
+#define ICON_DRAW_SKETCH       (1 << 6)
 #define ICON_PROGRESS_INVERT   (1 << 7)
 
 void LCD_init(void);
@@ -174,10 +174,10 @@ void LCD_write_command(unsigned char cmd);
 void LCD_write_byte(unsigned char data, unsigned long count);
 void LCD_write_line_raw(unsigned int x, unsigned int y, unsigned long length, unsigned char mode, unsigned char color);
 
+void LCD_write_icon(uint16_t x, unsigned char idx);
 void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile);
 void LCD_write_progress(unsigned long current, unsigned long total, unsigned char color);
 void LCD_write_progress(unsigned char progress);
-void LCD_write_icon(const char* filename);
 
 // Macro to perform line drawing, which includes calculations in the value
 // Since the length is known at compile-time, a definition is used instead of a function

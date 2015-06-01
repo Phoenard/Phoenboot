@@ -197,7 +197,7 @@ void LCD_write_line_raw(unsigned int x, unsigned int y, unsigned long length, un
   LCD_write_byte(color, length);
 }
 
-void drawIcon(uint16_t x, unsigned char idx) {
+void LCD_write_icon(uint16_t x, unsigned char idx) {
   uint8_t width, height;
   const unsigned char* data;
   uint16_t y;
@@ -240,6 +240,8 @@ void drawIcon(uint16_t x, unsigned char idx) {
 
 /* Clear the screen and write the frame, use NULL filename to wipe the screen only */
 void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
+  uint8_t drawSketchIcon = iconFlags & ICON_DRAW_SKETCH;
+
   /* Clear the screen (frame) as needed */
   if (!lcd_icon_flags) {
 
@@ -263,73 +265,74 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     LCD_write_rect(LCD_PROG_X, LCD_PROG_Y, LCD_PROG_W + LCD_PROG_STEP, LCD_PROG_H, LCD_FRAMECOLOR);
 
     /* Draw icon next */
-    iconFlags |= ICON_FORCEDRAW;
+    drawSketchIcon |= ICON_DRAW_SKETCH;
   }
 
-  if (iconFlags != ICON_PCIDLE) {
-    unsigned char new_progress;
-    if (lcd_icon_flags != iconFlags) {
-      lcd_icon_flags = iconFlags;
-
-      /* Update sketch icon if needed */
-      if ((lcd_icon_flags & ICON_FORCEDRAW)) {
-        if (file_open(sketchIconFile, "SKI", FILE_READ)) {
-          volume_cacheCurrentBlock(0);
-        } else {          
-          /* Generate a default icon if we failed to open one */
-          const unsigned int buff_len = 512;
-          const unsigned int width = 3;
-          const unsigned char mask_l = (1<<width)-1;
-          const unsigned char mask_r = mask_l<<(8-width);
-          const unsigned int buff_end_offset = buff_len - 8*(width+1);
-          const uint8_t* data_end = volume_cacheBuffer.data + buff_end_offset;
-
-          /* Set to block 0 which is never written and always re-read */
-          volume_cacheBlockNumber = 0;
-          memset(volume_cacheBuffer.data, 0xFF, 512);
-
-          uint8_t* data = volume_cacheBuffer.data + 8*width;;
-          uint8_t i = 32;
-          do {
-            *(data++) = (i==32) ? mask_l : (i==0) ? mask_r : 0x00;
-            i += 32;
-          } while (data < data_end);
-        }
-        drawIcon(LCD_ICON_X, ICON_SKETCH);
-      }
-
-      /* Update icons */
-      // 0/1/2 -> Sidebar icons
-      // 3 -> Sketch icon
-      // 4 -> Sidebar no icon
-      drawIcon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
-      drawIcon(LCD_STATUSICON_X_B, iconFlags);
-
-      /* Wipe current progress, reset marquee */
-      lcd_progress = 0;
-      lcd_progress_color = LCD_BLACK;
-      new_progress = LCD_PROG_CNT;
+  /* Redraw sketch icon as needed */
+  if (drawSketchIcon) {
+    if (file_open(sketchIconFile, "SKI", FILE_READ)) {
+      /* Cache first block containing icon data */
+      volume_cacheCurrentBlock(0);
     } else {
-      /* Draw and update the marquee bar */
-      uint8_t marqueeColor;
+      /* Generate a default icon if we failed to open one */
+      const unsigned int buff_len = 512;
+      const unsigned int width = 3;
+      const unsigned char mask_l = (1<<width)-1;
+      const unsigned char mask_r = mask_l<<(8-width);
+      const uint8_t* data_end = volume_cacheBuffer.data + buff_len;
+      const uint8_t* data_top = volume_cacheBuffer.data + 8*width;
+      const uint8_t* data_btm = data_end - 8*width;
 
-      /* FROM=NONE: no data, show NO_PROG indication */
-      /* FROM/TO=SD: SD-card is accessed, show PC_SD indication */
-      /* Any other case: Chip ROM is accessed, show PC_ROM indication */
-      if (lcd_icon_flags & ICON_FROM_NONE) {
-        marqueeColor = STATUS_COLOR_NOPROG;
-      } else if (lcd_icon_flags & (ICON_FROM_SD | ICON_TO_SD)) {
-        marqueeColor = STATUS_COLOR_PC_SD;
-      } else {
-        marqueeColor = STATUS_COLOR_PC_ROM;
-      }
+      /* Set to block 0 which is never written and always re-read */
+      volume_cacheBlockNumber = 0;
 
-      if (lcd_progress >= LCD_PROG_CNT) {
-        lcd_progress = 0;
-        lcd_progress_color = (lcd_progress_color ? LCD_BLACK : marqueeColor);
-      }
-      new_progress = lcd_progress + LCD_PROG_MARQ_BATCH;
+      /* Algorithmic function to render a width-thick rectangle */
+      uint8_t* data = volume_cacheBuffer.data;
+      uint8_t i = 32;
+      do {
+        /* Fill white for bottom/top, apply mask to left/right, remainder is black */
+        *data = (data < data_top || data >= data_btm) ? 0xFF : 
+                (i==32) ? mask_l : (i==0) ? mask_r : 0x00;
+        data++;
+        i += 32;
+      } while (data < data_end);
     }
+    LCD_write_icon(LCD_ICON_X, ICON_SKETCH);
+  }
+
+  unsigned char new_progress;
+  if (lcd_icon_flags != iconFlags) {
+    lcd_icon_flags = iconFlags;
+
+    /* Update icons */
+    LCD_write_icon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
+    LCD_write_icon(LCD_STATUSICON_X_B, iconFlags);
+
+    /* Wipe current progress, reset marquee */
+    lcd_progress = 0;
+    lcd_progress_color = LCD_BLACK;
+    new_progress = LCD_PROG_CNT;
+  } else {
+    /* Draw and update the marquee bar */
+    uint8_t marqueeColor;
+
+    /* FROM=NONE: no data, show NO_PROG indication */
+    /* FROM/TO=SD: SD-card is accessed, show PC_SD indication */
+    /* Any other case: Chip ROM is accessed, show PC_ROM indication */
+    if (lcd_icon_flags & ICON_FROM_NONE) {
+      marqueeColor = STATUS_COLOR_NOPROG;
+    } else if (lcd_icon_flags & (ICON_FROM_SD | ICON_TO_SD)) {
+      marqueeColor = STATUS_COLOR_PC_SD;
+    } else {
+      marqueeColor = STATUS_COLOR_PC_ROM;
+    }
+    if (lcd_progress >= LCD_PROG_CNT) {
+      lcd_progress = 0;
+      lcd_progress_color = (lcd_progress_color ? LCD_BLACK : marqueeColor);
+    }
+    new_progress = lcd_progress + LCD_PROG_MARQ_BATCH;
+  }
+  if (iconFlags != ICON_PCIDLE) {
     LCD_write_progress(new_progress);
   }
 

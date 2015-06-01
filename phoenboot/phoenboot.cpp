@@ -766,7 +766,7 @@ void loadSketch(PHN_Settings *boot_flags) {
   }
 
   /* Initialize the frame, draw icon to load. Force it. */
-  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_FORCEDRAW, boot_flags->sketch_current);
+  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, boot_flags->sketch_current);
 
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */
@@ -883,7 +883,7 @@ void saveSketch(PHN_Settings *boot_flags) {
     boot_flags->flags |= SETTINGS_CHANGED;
 
     /* Show saving frame */
-    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_FORCEDRAW, boot_flags->sketch_current);
+    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags->sketch_current);
 
     /* Initiate the saving process to the SD */
     /* Note: always saves contents in Intel HEX format */
