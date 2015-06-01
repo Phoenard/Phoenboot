@@ -727,7 +727,7 @@ program:
   /* ================================== */
 
   /* Prepare the LCD screen for further program use */
-  LCD_write_frame(ICON_FROM_NONE | ICON_TO_NONE, NULL);
+  LCD_write_frame(ICON_PCIDLE, NULL);
 
   /* Turn off UART */
   UART_STATUS_REG &= 0xFD;

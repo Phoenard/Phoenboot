@@ -300,39 +300,39 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     LCD_write_icon(LCD_ICON_X, ICON_SKETCH);
   }
 
-  unsigned char new_progress;
-  if (lcd_icon_flags != iconFlags) {
-    lcd_icon_flags = iconFlags;
+  if (iconFlags != ICON_PCIDLE || !lcd_icon_flags) {
+    unsigned char new_progress;
+    if (lcd_icon_flags != iconFlags) {
+      lcd_icon_flags = iconFlags;
 
-    /* Update icons */
-    LCD_write_icon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
-    LCD_write_icon(LCD_STATUSICON_X_B, iconFlags);
+      /* Update icons */
+      LCD_write_icon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
+      LCD_write_icon(LCD_STATUSICON_X_B, iconFlags);
 
-    /* Wipe current progress, reset marquee */
-    lcd_progress = 0;
-    lcd_progress_color = LCD_BLACK;
-    new_progress = LCD_PROG_CNT;
-  } else {
-    /* Draw and update the marquee bar */
-    uint8_t marqueeColor;
-
-    /* FROM=NONE: no data, show NO_PROG indication */
-    /* FROM/TO=SD: SD-card is accessed, show PC_SD indication */
-    /* Any other case: Chip ROM is accessed, show PC_ROM indication */
-    if (lcd_icon_flags & ICON_FROM_NONE) {
-      marqueeColor = STATUS_COLOR_NOPROG;
-    } else if (lcd_icon_flags & (ICON_FROM_SD | ICON_TO_SD)) {
-      marqueeColor = STATUS_COLOR_PC_SD;
-    } else {
-      marqueeColor = STATUS_COLOR_PC_ROM;
-    }
-    if (lcd_progress >= LCD_PROG_CNT) {
+      /* Wipe current progress, reset marquee */
       lcd_progress = 0;
-      lcd_progress_color = (lcd_progress_color ? LCD_BLACK : marqueeColor);
+      lcd_progress_color = LCD_BLACK;
+      new_progress = LCD_PROG_CNT;
+    } else {
+      /* Draw and update the marquee bar */
+      uint8_t marqueeColor;
+
+      /* FROM=NONE: no data, show NO_PROG indication */
+      /* FROM/TO=SD: SD-card is accessed, show PC_SD indication */
+      /* Any other case: Chip ROM is accessed, show PC_ROM indication */
+      if (lcd_icon_flags & ICON_FROM_NONE) {
+        marqueeColor = STATUS_COLOR_NOPROG;
+      } else if (lcd_icon_flags & (ICON_FROM_SD | ICON_TO_SD)) {
+        marqueeColor = STATUS_COLOR_PC_SD;
+      } else {
+        marqueeColor = STATUS_COLOR_PC_ROM;
+      }
+      if (lcd_progress >= LCD_PROG_CNT) {
+        lcd_progress = 0;
+        lcd_progress_color = (lcd_progress_color ? LCD_BLACK : marqueeColor);
+      }
+      new_progress = lcd_progress + LCD_PROG_MARQ_BATCH;
     }
-    new_progress = lcd_progress + LCD_PROG_MARQ_BATCH;
-  }
-  if (iconFlags != ICON_PCIDLE) {
     LCD_write_progress(new_progress);
   }
 
