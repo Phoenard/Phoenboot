@@ -162,6 +162,7 @@ THE SOFTWARE.
 #define ICON_PROGRESS_INVERT   (1 << 7)
 
 void LCD_init(void);
+void LCD_write_register(unsigned char cmd, unsigned char arg0, unsigned char arg1);
 void LCD_write_register(unsigned char cmd, unsigned int arg);
 void LCD_write_command(unsigned char cmd);
 void LCD_write_byte(unsigned char data, unsigned long count);
@@ -175,7 +176,7 @@ void LCD_write_icon(const char* filename);
 // Macro to perform line drawing, which includes calculations in the value
 // Since the length is known at compile-time, a definition is used instead of a function
 // This reduces the final binary size
-#define LCD_write_line(x, y, length, mode, color)  LCD_write_line_raw(x, y, ((unsigned long) (length) << 2), mode, color)
+#define LCD_write_line(x, y, length, mode, color)  LCD_write_line_raw(x, y, ((unsigned long) (length) << 1), mode, color)
 
 // Macro to perform rectangle drawing, which includes calculations in the value
 // Since the parameters are known at compile-time, a definition is used instead of a function
@@ -185,14 +186,6 @@ void LCD_write_icon(const char* filename);
   LCD_write_line(x, y + h - 1, w, LCD_MODE_HOR, color); \
   LCD_write_line(x, y, h, LCD_MODE_VER, color); \
   LCD_write_line(x + w - 1, y, h, LCD_MODE_VER, color); \
-}
-
-// Macro to write to a register, to be used when the argument is (partially) known at compile time
-// This reduces the final binary size
-#define LCD_write_register_def(cmd, arg) { \
-  LCD_write_command(cmd); \
-  LCD_write_byte((arg) >> 8, 2); \
-  LCD_write_byte((arg) & 0xFF, 2); \
 }
 
 #endif /* LCDMINIMAL_H_ */

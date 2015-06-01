@@ -154,17 +154,24 @@ void LCD_init(void) {
   TFTLCD_RESET_PORT = RESET_B;
 }
 
-void LCD_write_byte(unsigned char data, unsigned long count_half) {
+void LCD_write_byte(unsigned char data, unsigned long count) {
   /* Push the data */
   TFTLCD_DATA_PORT = data;
-  while (count_half--) {
-    TFTLCD_WR_PORT ^= TFTLCD_WR_MASK;
-    asm volatile("nop\n");
+  while (count) {
+    TFTLCD_WR_PORT = WR_WRITE_A;
+    count--;
+    TFTLCD_WR_PORT = WR_WRITE_B;
   }
 }
 
+void LCD_write_register(unsigned char cmd, unsigned char arg0, unsigned char arg1) {
+  LCD_write_command(cmd);
+  LCD_write_byte(arg1, 1);
+  LCD_write_byte(arg0, 1);
+}
+
 void LCD_write_register(unsigned char cmd, unsigned int arg) {
-  LCD_write_register_def(cmd, arg);
+  LCD_write_register(cmd, arg & 0xFF, arg >> 8);
 }
 
 void LCD_write_command(unsigned char cmd) {
@@ -183,7 +190,7 @@ void LCD_write_line_raw(unsigned int x, unsigned int y, unsigned long length, un
   LCD_write_register(LCD_CMD_GRAM_HOR_AD, (LCD_HEIGHT - 1) - y);
 
   /* Write the ENTRY_MOD, use the definition to save 2 bytes */
-  LCD_write_register_def(LCD_CMD_ENTRY_MOD, 0x1000 | mode);
+  LCD_write_register(LCD_CMD_ENTRY_MOD, mode, 0x10);
 
   /* Write CGRAM command, then push out the pixels */
   LCD_write_command(LCD_CMD_RW_GRAM);
@@ -222,7 +229,7 @@ void drawIcon(uint16_t x, unsigned char idx) {
       if ((dx & 0x7) == 0 && data) pix_dat = *data++;
 
       /* Push the pixel */
-      LCD_write_byte((pix_dat & 0x1) ? LCD_ICON_COLOR : LCD_BLACK, 4);
+      LCD_write_byte((pix_dat & 0x1) ? LCD_ICON_COLOR : LCD_BLACK, 2);
 
       /* Next pixel data bit */
       pix_dat >>= 1;
@@ -236,13 +243,14 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
   if (!lcd_icon_flags) {
 
     /* Delay needed after reset to give LCD time to initialize */
-    _delay_ms(32.0);
+    _delay_ms(25.0);
 
     /* Initialize the LCD registers */
-    unsigned char i = 0;
+    const uint8_t *data = LCD_REG_DATA;
+    const uint8_t *data_end = LCD_REG_DATA + sizeof(LCD_REG_DATA);
     do {
-      LCD_write_register(LCD_REG_DATA[i], *((unsigned int*) (LCD_REG_DATA + i + 1)));
-    } while ((i += 3) < sizeof(LCD_REG_DATA));
+      LCD_write_register(data[0], data[1], data[2]);
+    } while ((data += 3) != data_end);
 
     /* Fill with BLACK */
     LCD_write_line(0, 0, LCD_PIXELS, LCD_MODE_HOR, LCD_BLACK);
@@ -251,7 +259,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     if (sketchIconFile == NULL) return;
 
     /* Draw the box frame */
-	  LCD_write_rect(LCD_PROG_X, LCD_PROG_Y, LCD_PROG_W + LCD_PROG_STEP, LCD_PROG_H, LCD_FRAMECOLOR);
+    LCD_write_rect(LCD_PROG_X, LCD_PROG_Y, LCD_PROG_W + LCD_PROG_STEP, LCD_PROG_H, LCD_FRAMECOLOR);
 
     /* Draw icon next */
     iconFlags |= ICON_FORCEDRAW;
@@ -322,13 +330,13 @@ drawiconmisc:
 
   if (sketchIconFile) {
     /* There was a filename, just no icon. Draw a square as an icon */
-	  LCD_write_rect(LCD_ICON_X, LCD_ICON_Y, LCD_ICON_W, LCD_ICON_H, LCD_ICON_COLOR);
+    LCD_write_rect(LCD_ICON_X, LCD_ICON_Y, LCD_ICON_W, LCD_ICON_H, LCD_ICON_COLOR);
   }
 }
 
 void LCD_write_progress(unsigned long current, unsigned long total, unsigned char color) {
   lcd_progress_color = color;
-	LCD_write_progress(LCD_PROG_CNT * current / (total + LCD_PROG_CNT));
+  LCD_write_progress(LCD_PROG_CNT * current / (total + LCD_PROG_CNT));
 }
 
 void LCD_write_progress(unsigned char progress) {
