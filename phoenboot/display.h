@@ -64,7 +64,7 @@ THE SOFTWARE.
 #define STATUS_COLOR_PC_ROM  LCD_GREEN
 #define STATUS_COLOR_PC_SD   LCD_CYAN
 
-/* Icon settings */
+/* Sketch icon settings */
 #define LCD_ICON_W      64
 #define LCD_ICON_H      64
 #define LCD_ICON_X      ((LCD_WIDTH - LCD_ICON_W) / 2)
@@ -85,6 +85,12 @@ THE SOFTWARE.
 #define LCD_PROG_RIGHT  (LCD_WIDTH - LCD_PROG_W - LCD_PROG_LEFT - LCD_PROG_STEP - 1)
 #define LCD_PROG_CLEAR  0xFF
 #define LCD_FRAMECOLOR  LCD_WHITE
+
+/* Settings to wipe icon and progress */
+#define LCD_WIPE_X      LCD_ICON_X
+#define LCD_WIPE_Y      LCD_ICON_Y
+#define LCD_WIPE_LINES  ((uint32_t) (LCD_PROG_Y+LCD_PROG_H-LCD_ICON_Y-1))
+#define LCD_WIPE_LENGTH (LCD_ICON_RIGHT+LCD_PROG_RIGHT+LCD_WIPE_LINES*LCD_WIDTH)
 
 /* Device icon settings */
 #define LCD_STATUSICON_W    32

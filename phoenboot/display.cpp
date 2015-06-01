@@ -203,12 +203,12 @@ void drawIcon(uint16_t x, unsigned char idx) {
   uint16_t y;
 
   idx &= ICON_DATA_MASK;
-  if (idx == 4) {
+  if (idx == ICON_FROM_NONE) {
     y = LCD_STATUSICON_Y;
     width = LCD_STATUSICON_W;
-    height = 0; /* Set height to 0 for NO ICON */
+    height = LCD_STATUSICON_H;
     data = NULL;
-  } else if (idx == 3) {
+  } else if (idx == ICON_SKETCH) {
     y = LCD_ICON_Y;
     width = LCD_ICON_W;
     height = LCD_ICON_H;
@@ -227,7 +227,7 @@ void drawIcon(uint16_t x, unsigned char idx) {
     width_ctr = width;
     do {
       /* Refresh pixel data every 8 pixels */
-      if ((width_ctr & 0x7) == 0) pix_dat = *data++;
+      if ((width_ctr & 0x7) == 0 && data) pix_dat = *data++;
 
       /* Push the pixel */
       LCD_write_byte((pix_dat & 0x1) ? LCD_ICON_COLOR : LCD_BLACK, 2);
@@ -299,6 +299,9 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
       }
 
       /* Update icons */
+      // 0/1/2 -> Sidebar icons
+      // 3 -> Sketch icon
+      // 4 -> Sidebar no icon
       drawIcon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
       drawIcon(LCD_STATUSICON_X_B, iconFlags);
 
@@ -332,7 +335,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
 
   /* No sketch: clear screen by wiping from top-left pixel to bottom-right pixel */
   if (sketchIconFile == NULL) {
-    LCD_write_line(LCD_PROG_X, LCD_PROG_Y, (LCD_WIDTH * LCD_PROG_H) - LCD_PROG_LEFT - LCD_PROG_RIGHT, LCD_MODE_HOR, LCD_BLACK);
+    LCD_write_line(LCD_WIPE_X, LCD_WIPE_Y, LCD_WIPE_LENGTH, LCD_MODE_HOR, LCD_BLACK);
   }
 }
 
