@@ -206,7 +206,7 @@ void drawIcon(uint16_t x, unsigned char idx) {
   if (idx == 4) {
     y = LCD_STATUSICON_Y;
     width = LCD_STATUSICON_W;
-    height = LCD_STATUSICON_H;
+    height = 0; /* Set height to 0 for NO ICON */
     data = NULL;
   } else if (idx == 3) {
     y = LCD_ICON_Y;
@@ -219,21 +219,22 @@ void drawIcon(uint16_t x, unsigned char idx) {
     height = LCD_STATUSICON_H;
     data = ICONS[idx];
   }
-  unsigned char pix_dat = 0, dx, dy;
-  for (dy = 0; dy < height; dy++) {
+  unsigned char pix_dat = 0, width_ctr;
+  while (height--) {
     /* Set LCD cursor to start of line by drawing 0-length line */
-    LCD_write_line(x, y + dy, 0, LCD_MODE_HOR, LCD_BLACK);
+    LCD_write_line(x, y++, 0, LCD_MODE_HOR, LCD_BLACK);
 
-    for (dx = 0; dx < width; dx++) {
+    width_ctr = width;
+    do {
       /* Refresh pixel data every 8 pixels */
-      if ((dx & 0x7) == 0 && data) pix_dat = *data++;
+      if ((width_ctr & 0x7) == 0) pix_dat = *data++;
 
       /* Push the pixel */
       LCD_write_byte((pix_dat & 0x1) ? LCD_ICON_COLOR : LCD_BLACK, 2);
 
       /* Next pixel data bit */
       pix_dat >>= 1;
-    }
+    } while (--width_ctr);
   }
 }
 
@@ -270,6 +271,33 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     if (lcd_icon_flags != iconFlags) {
       lcd_icon_flags = iconFlags;
 
+      /* Update sketch icon if needed */
+      if ((lcd_icon_flags & ICON_FORCEDRAW)) {
+        if (file_open(sketchIconFile, "SKI", FILE_READ)) {
+          volume_cacheCurrentBlock(0);
+        } else {          
+          /* Generate a default icon if we failed to open one */
+          const unsigned int buff_len = 512;
+          const unsigned int width = 3;
+          const unsigned char mask_l = (1<<width)-1;
+          const unsigned char mask_r = mask_l<<(8-width);
+          const unsigned int buff_end_offset = buff_len - 8*(width+1);
+          const uint8_t* data_end = volume_cacheBuffer.data + buff_end_offset;
+
+          /* Set to block 0 which is never written and always re-read */
+          volume_cacheBlockNumber = 0;
+          memset(volume_cacheBuffer.data, 0xFF, 512);
+
+          uint8_t* data = volume_cacheBuffer.data + 8*width;;
+          uint8_t i = 32;
+          do {
+            *(data++) = (i==32) ? mask_l : (i==0) ? mask_r : 0x00;
+            i += 32;
+          } while (data < data_end);
+        }
+        drawIcon(LCD_ICON_X, ICON_SKETCH);
+      }
+
       /* Update icons */
       drawIcon(LCD_STATUSICON_X_A, iconFlags >> ICON_DATA_SHIFT);
       drawIcon(LCD_STATUSICON_X_B, iconFlags);
@@ -302,35 +330,9 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     LCD_write_progress(new_progress);
   }
 
-  /* Draw the icon */
-  if (LCD_ICON_EN && (iconFlags & ICON_FORCEDRAW)) {
-    if (file_open(sketchIconFile, "SKI", FILE_READ)) {
-      volume_cacheCurrentBlock(0);
-      drawIcon(LCD_ICON_X, 3);
-    } else {
-      // Default icon drawing is handled there */
-      goto drawiconmisc;
-    }
-  }
-
-  /* If file is specified, we already drew an icon earlier - stop here */
-  if (sketchIconFile != NULL) {
-    return;
-  }
-
-  /* If clearing, wipe the progress area and return */
-  /* Start at the top-left pixel, fill whole lines up until the bottom-right pixel */
-  LCD_write_line(LCD_PROG_X, LCD_PROG_Y, (LCD_WIDTH * LCD_PROG_H) - LCD_PROG_LEFT - LCD_PROG_RIGHT, LCD_MODE_HOR, LCD_BLACK);
-
-  /* Miscellaneous icon drawing (clearing/default icon) */
-drawiconmisc:
-
-  /* Clear the icon area */
-  LCD_write_line(LCD_ICON_X, LCD_ICON_Y, LCD_WIDTH * LCD_ICON_W - LCD_ICON_LEFT - LCD_ICON_RIGHT, LCD_MODE_HOR, LCD_BLACK);
-
-  if (sketchIconFile) {
-    /* There was a filename, just no icon. Draw a square as an icon */
-    LCD_write_rect(LCD_ICON_X, LCD_ICON_Y, LCD_ICON_W, LCD_ICON_H, LCD_ICON_COLOR);
+  /* No sketch: clear screen by wiping from top-left pixel to bottom-right pixel */
+  if (sketchIconFile == NULL) {
+    LCD_write_line(LCD_PROG_X, LCD_PROG_Y, (LCD_WIDTH * LCD_PROG_H) - LCD_PROG_LEFT - LCD_PROG_RIGHT, LCD_MODE_HOR, LCD_BLACK);
   }
 }
 

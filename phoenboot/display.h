@@ -65,7 +65,6 @@ THE SOFTWARE.
 #define STATUS_COLOR_PC_SD   LCD_CYAN
 
 /* Icon settings */
-#define LCD_ICON_EN     1
 #define LCD_ICON_W      64
 #define LCD_ICON_H      64
 #define LCD_ICON_X      ((LCD_WIDTH - LCD_ICON_W) / 2)
@@ -152,6 +151,7 @@ THE SOFTWARE.
 #define ICON_FROM_COMPUTER     (0 << 0)
 #define ICON_FROM_CHIPROM      (1 << 0)
 #define ICON_FROM_SD           (2 << 0)
+#define ICON_SKETCH            (3 << 0)
 #define ICON_FROM_NONE         (4 << 0)
 #define ICON_TO_COMPUTER       (0 << ICON_DATA_SHIFT)
 #define ICON_TO_CHIPROM        (1 << ICON_DATA_SHIFT)
