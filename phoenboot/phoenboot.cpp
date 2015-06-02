@@ -259,22 +259,21 @@ void (*app_start)(void) = APP_START;
 
 int main(void) {
   address_t address;
-  unsigned char  msgParseState;
-  unsigned int   msgLength_st1;
-  unsigned char  checksum = 0;
+  unsigned char  input_parseState;
+  uint16_pack_t  input_dataLength;
+  unsigned int   input_dataIndex;
+  unsigned char  input_checksum;
   unsigned int   checksum_idx;
-  unsigned int   msgLength = 0;
+  unsigned int   msgLength;
   unsigned char  msgBuffer_full[600];
   unsigned char* msgBuffer = (msgBuffer_full + 5);
   unsigned char  msgStatus;
-  unsigned char  msgByteResult;
   unsigned char  c, *p;
   unsigned char  isLeave;
-  unsigned char  isCommandProcessed;
   unsigned char  iconFlags;
   uint16_pack_t  uint16_pack;
   uint32_pack_t  uint32_pack;
-  PHN_Settings    boot_flags;
+  PHN_Settings   boot_flags;
 
   //************************************************************************
   //*  Dec 29,  2011  <MLS> Issue #181, added watch dog timer support
@@ -349,78 +348,64 @@ bootloader:
   isLeave = 0;
   address = APP_START;
   while (!isLeave) {
-    checksum = 0;
-    msgParseState = ST_START;
-    msgLength_st1 = 0;
-
-    /* First stage: complete a full message */
-    isCommandProcessed = 0;
-    do {
+    /* 
+     * Read in a full message into the buffer
+     * Increments first time - start -1
+     */
+    input_parseState = ST_START-1;
+    input_checksum = 0;
+    input_dataIndex = 0;
+    for (;;) {
       /* Wait for data to be available on UART, on timeout go to program */
       if (!waitForData()) goto program;
 
-      /* Receive next byte of data */
+      /* Receive next byte of data and update the checksum */
       c = UART_DATA_REG;
+      input_checksum ^= c;
 
-      /* Update the checksum */
-      checksum    ^=  c;
-
-      switch (msgParseState) {
-        case ST_START:
-          if (c != MESSAGE_START) {
-            goto bootloader;
-          }
-          msgParseState = ST_GET_SEQ_NUM;
-          break;
-
-        case ST_GET_SEQ_NUM:
-          /* Set sequence number in response buffer directly */
-          msgBuffer_full[1] = c;
-          msgParseState  =  ST_MSG_SIZE_1;
-          break;
-
-        case ST_MSG_SIZE_1:
-          msgLength      =  c<<8;
-          msgParseState  =  ST_MSG_SIZE_2;
-          break;
-
-        case ST_MSG_SIZE_2:
-          msgLength     |=  c;
-          msgParseState  =  ST_GET_TOKEN;
-          break;
-
-        case ST_GET_TOKEN:
-          /* Restart if token check fails */
-          if (c != TOKEN) {
-            goto bootloader;
-          }
-          msgParseState = ST_GET_DATA;
-          break;
-
-        case ST_GET_DATA:
-          msgBuffer[msgLength_st1++] = c;
-          if (msgLength_st1 == msgLength) {
-            msgParseState = ST_GET_CHECK;
-          }
-          break;
-
-        case ST_GET_CHECK:
-          /*
-           * Check if the checksum matches
-           * If checksum ^ expected == 0 it was correct
-           * Nonzero indicates the checksum was incorrect
-           * If this passes, continue processing the message data
-           * If this fails, restart this stage from the beginning
-           */
-          if (checksum) {
+      /* If end of data reached, verify it using the checksum */
+      if (input_parseState == ST_GET_DATA) {
+        if (input_dataIndex == input_dataLength.value) {
+          if (input_checksum) {
+            /* Fail: restart from the beginning */
             goto bootloader;
           } else {
-            isCommandProcessed = 1;
+            /* Pass: Start processing the message */
+            break;
           }
+        }
+      } else {
+        input_parseState++;
       }
-    } while (!isCommandProcessed);
 
-    /* 
+      /* Process next message byte */
+      if (input_parseState == ST_START) {
+        /* Restart if start token check fails */
+        if (c != MESSAGE_START) goto bootloader;
+
+      } else if (input_parseState == ST_GET_SEQ_NUM) {
+        /* Set sequence number in response */
+        msgBuffer_full[1] = c;
+
+      } else if (input_parseState == ST_MSG_SIZE_1) {
+        /* Set the high-order length byte */
+        input_dataLength.bytes[1] = c;
+
+      } else if (input_parseState == ST_MSG_SIZE_2) {
+        /* Set the low-order length byte */
+        input_dataLength.bytes[0] = c;
+
+      } else if (input_parseState == ST_GET_TOKEN) {
+        /* Restart if token check fails */
+        if (c != TOKEN) goto bootloader;
+
+      } else {
+        /* Append message data */
+        msgBuffer[input_dataIndex++] = c;
+      }
+    }
+
+    /*
      * Optimization: These values are used for almost every response
      * Put here and used before sending to save a few bytes of program memory
      */
@@ -453,19 +438,19 @@ bootloader:
       case CMD_GET_PARAMETER:
         switch(msgBuffer[1]) {
           case PARAM_BUILD_NUMBER_LOW:
-             msgByteResult = CONFIG_PARAM_BUILD_NUMBER_LOW; break;
+             c = CONFIG_PARAM_BUILD_NUMBER_LOW; break;
           case PARAM_BUILD_NUMBER_HIGH:
-             msgByteResult = CONFIG_PARAM_BUILD_NUMBER_HIGH; break;
+             c = CONFIG_PARAM_BUILD_NUMBER_HIGH; break;
           case PARAM_HW_VER:
-             msgByteResult = CONFIG_PARAM_HW_VER; break;
+             c = CONFIG_PARAM_HW_VER; break;
           case PARAM_SW_MAJOR:
-             msgByteResult = CONFIG_PARAM_SW_MAJOR; break;
+             c = CONFIG_PARAM_SW_MAJOR; break;
           case PARAM_SW_MINOR:
-             msgByteResult = CONFIG_PARAM_SW_MINOR; break;
+             c = CONFIG_PARAM_SW_MINOR; break;
           default:
-             msgByteResult = 0; break;
+             c = 0; break;
         }
-        msgBuffer[2] = msgByteResult;
+        msgBuffer[2] = c;
         msgLength    = 3;
         break;
 
