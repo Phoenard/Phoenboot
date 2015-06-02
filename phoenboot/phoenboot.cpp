@@ -366,13 +366,12 @@ bootloader:
       /* If end of data reached, verify it using the checksum */
       if (input_parseState == ST_GET_DATA) {
         if (input_dataIndex == input_dataLength.value) {
+          /* Send error message upon checksum failure */
           if (input_checksum) {
-            /* Fail: restart from the beginning */
-            goto bootloader;
-          } else {
-            /* Pass: Start processing the message */
-            break;
+            msgBuffer[0] = ANSWER_CKSUM_ERROR;
           }
+          /* Break to start processing */
+          break;
         }
       } else {
         input_parseState++;
