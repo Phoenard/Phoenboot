@@ -263,7 +263,7 @@ int main(void) {
   uint16_pack_t  input_dataLength;
   unsigned int   input_dataIndex;
   unsigned char  input_checksum;
-  unsigned int   checksum_idx;
+  unsigned char* checksum_byte;
   uint16_pack_t  msgLength;
   unsigned char  msgBuffer_full[600];
   unsigned char* msgBuffer = (msgBuffer_full + 5);
@@ -639,34 +639,30 @@ bootloader:
      * Now send answer message back
      */
     /* Set the header of the message to send */
-    msgBuffer_full[0] = MESSAGE_START;    
+    msgBuffer_full[0] = MESSAGE_START;
+    msgBuffer_full[2] = msgLength.bytes[1];
+    msgBuffer_full[3] = msgLength.bytes[0];
     msgBuffer_full[4] = TOKEN;
     msgBuffer_full[6] = msgStatus;
 
     /* Initialize the display, draw icon of current file */
-    /* For some reason, putting this after the above 4 lines reduces binary size... */
+    /* For some reason, putting this after the above lines reduces binary size... */
     LCD_write_frame(iconFlags, boot_flags.sketch_current);
 
-    /* Copy the message length data over, then swap the two bytes */
-    msgBuffer_full[2] = msgLength.bytes[1];
-    msgBuffer_full[3] = msgLength.bytes[0];
-
-    /* Store the index in the msgBuffer where checksum is stored */
-    checksum_idx = msgLength.value;
+    /* Store the pointer of the checksum byte and reset it to 0 */
+    checksum_byte = msgBuffer + msgLength.value;
+    *checksum_byte = 0;
 
     /* Add header + checksum length to message length */
     msgLength.value += 6;
 
-    /* Set initial checksum to 0 */
-    msgBuffer[checksum_idx] = 0;
-
     /* Send the message, update checksum as we send */
     p = msgBuffer_full;
     do {
-      UART_DATA_REG = *p;             /* Start transmission of next byte */
-      msgBuffer[checksum_idx] ^= *p;  /* Update checksum */
-      p++;                            /* Next byte */
-      msgLength.value--;                    /* Update length to send */
+      UART_DATA_REG = *p;    /* Start transmission of next byte */
+      *checksum_byte ^= *p;  /* Update checksum */
+      p++;                   /* Next byte */
+      msgLength.value--;     /* Update length to send */
       
       /* Complete transmission and clear TX flag */
       while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));
