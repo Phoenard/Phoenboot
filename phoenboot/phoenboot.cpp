@@ -367,9 +367,10 @@ bootloader:
 
       switch (msgParseState) {
         case ST_START:
-          if (c == MESSAGE_START) {
-            msgParseState = ST_GET_SEQ_NUM;
+          if (c != MESSAGE_START) {
+            goto bootloader;
           }
+          msgParseState = ST_GET_SEQ_NUM;
           break;
 
         case ST_GET_SEQ_NUM:
