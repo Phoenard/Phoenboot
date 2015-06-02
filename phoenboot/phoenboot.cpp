@@ -152,9 +152,6 @@ static const char SIGNATURE_NAME[] = "8AVRISP_2";
 #define BOOT_START_MULT (1UL << 20)
 #define BOOT_START_DIV  1
 
-/* Swaps two variables using an intermediate variable */
-#define SWAP_VAR(c, a, b)   {c = a; a = b; b = c;}
-
 /* Enables access to memory treated as an unsigned int */
 #define PTR_TO_WORD(p) (*((unsigned int*) (p)))
 
@@ -178,9 +175,8 @@ typedef union {
  */
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
 void flash_write_page(address_t address, const unsigned char* p);
-void loadSketch(PHN_Settings *boot_flags);
-void saveSketch(PHN_Settings *boot_flags);
-void saveBootflags(PHN_Settings *boot_flags);
+void changeLoadedSketch(PHN_Settings &boot_flags);
+void saveBootflags(PHN_Settings &boot_flags);
 
 //*****************************************************************************
 
@@ -329,16 +325,13 @@ bootloader:
   if (!(SELECT_IN & SELECT_MASK)) {
     memcpy(boot_flags.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
     boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
-    saveBootflags(&boot_flags);
+    saveBootflags(boot_flags);
   }
 
   /* 0x1 = Sketch needs to be loaded from SD */
   if (boot_flags.flags & SETTINGS_LOAD) {
-    /* Save the sketch if modified */
-    saveSketch(&boot_flags);
-
-    /* Load the sketch */
-    loadSketch(&boot_flags);
+    /* Save old modified sketch and load a new sketch */
+    changeLoadedSketch(boot_flags);
 
     /* Directly go to the program when loaded - bootloader has timed out anyway */
     goto program;
@@ -674,7 +667,7 @@ bootloader:
 program:
 
   /* Save bootloader flags */
-  saveBootflags(&boot_flags);   
+  saveBootflags(boot_flags);   
 
   /* If no program available, go back to the bootloader */
   if (pgm_read_word_far(APP_START) == 0xFFFF) {
@@ -703,39 +696,94 @@ program:
   for(;;);
 }
 
-void saveBootflags(PHN_Settings *boot_flags) {
+void saveBootflags(PHN_Settings &boot_flags) {
   /* Write bootloader flags to EEPROM when updated */
-  if (boot_flags->flags & SETTINGS_CHANGED) {
-    boot_flags->flags &= ~SETTINGS_CHANGED;
-    PHN_Settings_Save(*boot_flags);
+  if (boot_flags.flags & SETTINGS_CHANGED) {
+    boot_flags.flags &= ~SETTINGS_CHANGED;
+    PHN_Settings_Save(boot_flags);
   }
 }
 
-void loadSketch(PHN_Settings *boot_flags) {
+void changeLoadedSketch(PHN_Settings &boot_flags) {
+  /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
+  if (boot_flags.flags & SETTINGS_MODIFIED) {
+    boot_flags.flags &= ~SETTINGS_MODIFIED;
+    boot_flags.flags |= SETTINGS_CHANGED;
+
+    /* Show saving frame */
+    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags.sketch_current);
+
+    /* Initiate the saving process to the SD */
+    /* Note: always saves contents in Intel HEX format */
+    if (file_open(boot_flags.sketch_current, "HEX", FILE_WIPE)) {
+
+      address_t address_read  = APP_START;
+      address_t address_write = APP_START;
+      unsigned char buff[HEX_FORMAT_BYTECOUNT + 4];
+      unsigned char buff_len = 0;
+      char reached_end;
+      do {
+        LCD_write_progress(address_read, boot_flags.sketch_size, STATUS_COLOR_SDSAVE);
+
+        /* Fill the buffer with data */
+        PTR_TO_WORD(buff + buff_len + 4) = pgm_read_word_far(address_read);
+        buff_len += 2;
+        address_read += 2;
+        reached_end = (address_read >= boot_flags.sketch_size);
+
+        /* Write a chunk of data when end is reached, or bytecount is reached */
+        if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
+          file_write_hex_line(buff, buff_len, address_write, 0x0);
+          address_write += buff_len;
+          buff_len = 0;
+
+          /* Increment extended data address as needed */
+          if (!(address_write & 0xFFFF)) {
+            buff[4] = address_write >> 12;
+            buff[5] = 0;
+            file_write_hex_line(buff, 2, 0x0000, 0x2);
+          }
+        }
+      } while (!reached_end);
+
+      /* Write data end line */
+      file_write_hex_line(buff, 0, 0x0000, 0x1);
+
+      /* Flush any buffered data to SD */
+      file_flush();
+    }
+
+    /* Save boot flags right now to prevent saving again next time */
+    saveBootflags(boot_flags);
+  }
+
   /* Store old flags, then reset flags to remove loading flag */
-  uint8_t oldFlags = boot_flags->flags;
-  boot_flags->flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE);
-  boot_flags->flags |= SETTINGS_CHANGED;
+  uint8_t oldFlags = boot_flags.flags;
+  boot_flags.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE);
+  boot_flags.flags |= SETTINGS_CHANGED;
 
   /* Swap current sketch with the one to load, this way you can go 'back' at any time */
-  unsigned char i;
   char c;
-  for (i = 0; i < 8; i++) {
-    SWAP_VAR(c, boot_flags->sketch_current[i], boot_flags->sketch_toload[i]);
+  char* toload = boot_flags.sketch_toload;
+  char* current = boot_flags.sketch_current;
+  for (unsigned char i = 0; i < 8; i++) {
+    c = toload[i];
+    toload[i] = current[i];
+    current[i] = c;
   }
 
   /* Initialize the frame, draw icon to load. Force it. */
-  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, boot_flags->sketch_current);
+  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, boot_flags.sketch_current);
 
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */
   address_t address = APP_START;
-  if (!(oldFlags & SETTINGS_LOADWIPE) && file_open(boot_flags->sketch_current, "HEX", FILE_READ)) {
+  if (!(oldFlags & SETTINGS_LOADWIPE) && file_open(boot_flags.sketch_current, "HEX", FILE_READ)) {
     /* Check the first 12 bytes to see if they are all HEX (0-9 A-F) data */
     /* If the file is empty either mode could be used since it reads random memory */
     /* This does not matter because in either mode empty data is handled properly */
     uint8_t* isHexData = volume_cacheCurrentBlock(0);
-    for (i = 0; i < 12; i++) {
+    for (unsigned char i = 0; i < 12; i++) {
       if (isHexData[i] < 0x30 || isHexData[i] > 0x46) {
         isHexData = 0;
         break;
@@ -756,7 +804,7 @@ void loadSketch(PHN_Settings *boot_flags) {
         /* Raw reading from the SD in blocks of 256 bytes at a time */
         flash_write_page(address, (unsigned char*) file_read(SPM_PAGESIZE));
         address += SPM_PAGESIZE;
-        boot_flags->sketch_size = file_size;
+        boot_flags.sketch_size = file_size;
       } else {
         /* Reading Intel HEX format */
         file_read_hex_line(data_buff);
@@ -805,7 +853,7 @@ void loadSketch(PHN_Settings *boot_flags) {
           memcpy(data_page_buffer, data_page_buffer + SPM_PAGESIZE, data_page_buffer_len);
 
           /* Update sketch size with the updated address position */
-          boot_flags->sketch_size = address;
+          boot_flags.sketch_size = address;
         }
 
         if (recordtype == 0x1) {
@@ -833,58 +881,4 @@ void loadSketch(PHN_Settings *boot_flags) {
    */
   unsigned int no_data = 0xFFFF;
   flash_write_page(address, (unsigned char*) &no_data);
-}
-
-void saveSketch(PHN_Settings *boot_flags) {
-  /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
-  if (boot_flags->flags & SETTINGS_MODIFIED) {
-    boot_flags->flags &= ~SETTINGS_MODIFIED;
-    boot_flags->flags |= SETTINGS_CHANGED;
-
-    /* Show saving frame */
-    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags->sketch_current);
-
-    /* Initiate the saving process to the SD */
-    /* Note: always saves contents in Intel HEX format */
-    if (file_open(boot_flags->sketch_current, "HEX", FILE_WIPE)) {
-
-      address_t address_read  = APP_START;
-      address_t address_write = APP_START;
-      unsigned char buff[HEX_FORMAT_BYTECOUNT + 4];
-      unsigned char buff_len = 0;
-      char reached_end;
-      do {
-        LCD_write_progress(address_read, boot_flags->sketch_size, STATUS_COLOR_SDSAVE);
-
-        /* Fill the buffer with data */
-        PTR_TO_WORD(buff + buff_len + 4) = pgm_read_word_far(address_read);
-        buff_len += 2;
-        address_read += 2;
-        reached_end = (address_read >= boot_flags->sketch_size);
-
-        /* Write a chunk of data when end is reached, or bytecount is reached */
-        if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
-          file_write_hex_line(buff, buff_len, address_write, 0x0);
-          address_write += buff_len;
-          buff_len = 0;
-
-          /* Increment extended data address as needed */
-          if (!(address_write & 0xFFFF)) {
-            buff[4] = address_write >> 12;
-            buff[5] = 0;
-            file_write_hex_line(buff, 2, 0x0000, 0x2);
-          }
-        }
-      } while (!reached_end);
-
-      /* Write data end line */
-      file_write_hex_line(buff, 0, 0x0000, 0x1);
-
-      /* Flush any buffered data to SD */
-      file_flush();
-    }
-
-    /* Save boot flags right now to prevent saving again next time */
-    saveBootflags(boot_flags);
-  }
 }
