@@ -325,7 +325,6 @@ bootloader:
   if (!(SELECT_IN & SELECT_MASK)) {
     memcpy(boot_flags.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
     boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
-    saveBootflags(boot_flags);
   }
 
   /* 0x1 = Sketch needs to be loaded from SD */
@@ -752,10 +751,10 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
       /* Flush any buffered data to SD */
       file_flush();
     }
-
-    /* Save boot flags right now to prevent saving again next time */
-    saveBootflags(boot_flags);
   }
+
+  /* Save boot flags right now to prevent saving and to keep trying to load */
+  saveBootflags(boot_flags);
 
   /* Store old flags, then reset flags to remove loading flag */
   uint8_t oldFlags = boot_flags.flags;
