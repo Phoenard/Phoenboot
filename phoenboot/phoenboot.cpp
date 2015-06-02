@@ -118,7 +118,8 @@ PHN_Settings SETTINGS_DEFAULT = {
 #define CONFIG_PARAM_SW_MINOR           0x0A
 
 /* Sign-on response identifier */
-static const char SIGNATURE_NAME[] = "8AVRISP_2";
+static const char SIGNATURE_NAME[] = "AVRISP_2";
+static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
 
 /*
  * Calculate the address where the bootloader starts from FLASHEND and BOOTSIZE
@@ -446,8 +447,9 @@ bootloader:
         break;
 
       case CMD_SIGN_ON:
-        memcpy(msgBuffer + 2, SIGNATURE_NAME, strlen(SIGNATURE_NAME));
-        msgLength.value = strlen(SIGNATURE_NAME) + 2;
+        msgBuffer[2] = SIGNATURE_LENGTH;
+        memcpy(msgBuffer + 3, SIGNATURE_NAME, SIGNATURE_LENGTH);
+        msgLength.value = SIGNATURE_LENGTH + 3;
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
