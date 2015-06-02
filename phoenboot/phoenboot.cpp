@@ -446,8 +446,8 @@ bootloader:
         break;
 
       case CMD_SIGN_ON:
-        memcpy(msgBuffer + 2, SIGNATURE_NAME, sizeof(SIGNATURE_NAME));
-        msgLength.value = sizeof(SIGNATURE_NAME) + 2;
+        memcpy(msgBuffer + 2, SIGNATURE_NAME, strlen(SIGNATURE_NAME));
+        msgLength.value = strlen(SIGNATURE_NAME) + 2;
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
