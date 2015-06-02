@@ -264,7 +264,7 @@ int main(void) {
   unsigned int   input_dataIndex;
   unsigned char  input_checksum;
   unsigned int   checksum_idx;
-  unsigned int   msgLength;
+  uint16_pack_t  msgLength;
   unsigned char  msgBuffer_full[600];
   unsigned char* msgBuffer = (msgBuffer_full + 5);
   unsigned char  msgStatus;
@@ -409,7 +409,7 @@ bootloader:
      * Put here and used before sending to save a few bytes of program memory
      */
     msgStatus = STATUS_CMD_OK;
-    msgLength = 2;
+    msgLength.value = 2;
     iconFlags = ICON_PCIDLE;
 
     /*
@@ -422,7 +422,7 @@ bootloader:
         msgBuffer[3] = msgBuffer[4];
         msgBuffer[4] = STATUS_CMD_OK;
         msgBuffer[5] = readParameter(msgBuffer[3], msgBuffer[5], msgBuffer[6]);
-        msgLength    = 7;
+        msgLength.value = 7;
         break;
 
       case CMD_READ_SIGNATURE_ISP:
@@ -431,7 +431,7 @@ bootloader:
         /* Read parameter - similar arguments are used for signature, lock and fuse */
         msgBuffer[2] = readParameter(msgBuffer[2], msgBuffer[3], msgBuffer[4]);
         msgBuffer[3] = STATUS_CMD_OK;
-        msgLength    = 4;
+        msgLength.value = 4;
         break;
 
       case CMD_GET_PARAMETER:
@@ -450,12 +450,12 @@ bootloader:
              c = 0; break;
         }
         msgBuffer[2] = c;
-        msgLength    = 3;
+        msgLength.value = 3;
         break;
 
       case CMD_SIGN_ON:
         memcpy(msgBuffer + 2, SIGNATURE_NAME, sizeof(SIGNATURE_NAME));
-        msgLength = sizeof(SIGNATURE_NAME) + 2;
+        msgLength.value = sizeof(SIGNATURE_NAME) + 2;
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
@@ -463,14 +463,14 @@ bootloader:
         /* Fall-through */
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
-        msgLength  =  2;
+        msgLength.value = 2;
         break;
 
       case CMD_LOAD_ADDRESS:
         /* Reverse the byte order, use intermediate 32-bit to 4 byte struct */
         uint32_pack = {msgBuffer[4], msgBuffer[3], msgBuffer[2], msgBuffer[1]};
         address = uint32_pack.value;
-        msgLength = 2;
+        msgLength.value = 2;
         break;
 
       case CMD_READ_SD_ISP:
@@ -485,7 +485,7 @@ bootloader:
           uint16_pack = {msgBuffer[2], msgBuffer[1]};
           uint8_t sdAccessed = 0;
           unsigned int size = uint16_pack.value;
-          msgLength = 2;
+          msgLength.value = 2;
 
           /* Writing or reading? */
           if (msgBuffer[0] & 0x1) {
@@ -561,7 +561,7 @@ bootloader:
             }
           } else {
             unsigned char *p = (msgBuffer + 2);
-            msgLength += size;
+            msgLength.value += size;
             switch (msgBuffer[0]) {
               case CMD_READ_FLASH_ISP:
                 {
@@ -607,7 +607,7 @@ bootloader:
 
           /* SD was accessed and something went wrong, return FAIL */
           if (sdAccessed && !volume.isInitialized) {
-            msgLength = 2;
+            msgLength.value = 2;
             msgStatus = STATUS_CMD_FAILED;
           }
         }
@@ -624,13 +624,13 @@ bootloader:
             file_open(name_none, name_none, FILE_READ);
 
             /* Respond with all known volume variables */
-            msgLength = 2 + sizeof(CardVolume);
+            msgLength.value = 2 + sizeof(CardVolume);
             memcpy(msgBuffer + 2, &volume, sizeof(CardVolume));
         }
         break;
 
       default:
-        msgLength = 2;
+        msgLength.value = 2;
         msgStatus = STATUS_CMD_FAILED;
         break;
     }
@@ -648,14 +648,14 @@ bootloader:
     LCD_write_frame(iconFlags, boot_flags.sketch_current);
 
     /* Copy the message length data over, then swap the two bytes */
-    memcpy(msgBuffer_full + 2, &msgLength, 2);
-    SWAP_VAR(c, msgBuffer_full[2], msgBuffer_full[3]);
+    msgBuffer_full[2] = msgLength.bytes[1];
+    msgBuffer_full[3] = msgLength.bytes[0];
 
     /* Store the index in the msgBuffer where checksum is stored */
-    checksum_idx = msgLength;
+    checksum_idx = msgLength.value;
 
     /* Add header + checksum length to message length */
-    msgLength += 6;
+    msgLength.value += 6;
 
     /* Set initial checksum to 0 */
     msgBuffer[checksum_idx] = 0;
@@ -666,12 +666,12 @@ bootloader:
       UART_DATA_REG = *p;             /* Start transmission of next byte */
       msgBuffer[checksum_idx] ^= *p;  /* Update checksum */
       p++;                            /* Next byte */
-      msgLength--;                    /* Update length to send */
+      msgLength.value--;                    /* Update length to send */
       
       /* Complete transmission and clear TX flag */
       while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));
       UART_STATUS_REG |= (1 << UART_TRANSMIT_COMPLETE);
-    } while (msgLength);
+    } while (msgLength.value);
   }
 
   /* Post-programming program label to jump to, skipping the main bootloader */
