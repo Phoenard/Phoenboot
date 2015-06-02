@@ -117,9 +117,6 @@ PHN_Settings SETTINGS_DEFAULT = {
 #define CONFIG_PARAM_SW_MAJOR           0x02
 #define CONFIG_PARAM_SW_MINOR           0x0A
 
-/* Hardware signature bytes for ATMEGA2560 */
-static const unsigned char SIGNATURE_BYTES[3] = {0x1E, 0x98, 0x01};
-  
 /* Sign-on response identifier */
 static const char SIGNATURE_NAME[] = "8AVRISP_2";
 
@@ -405,7 +402,7 @@ bootloader:
           unsigned char mode;
 
           if (msgBuffer[4]== 0x30) {
-            answerByte = SIGNATURE_BYTES[msgBuffer[6]];
+            answerByte = boot_signature_byte_get(msgBuffer[6] << 1);
           } else if (msgBuffer[4] & 0x50) {
             if (msgBuffer[4] == 0x58) {
               mode = GET_HIGH_FUSE_BITS;
@@ -461,9 +458,8 @@ bootloader:
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
-        msgLength = 2;
         isLeave   = 1;
-        break;
+        /* Fall-through */
 
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
@@ -472,7 +468,7 @@ bootloader:
 
       case CMD_READ_SIGNATURE_ISP:
         msgLength     =  4;
-        msgBuffer[2]  =  SIGNATURE_BYTES[msgBuffer[4]];
+        msgBuffer[2]  =  boot_signature_byte_get(msgBuffer[4] << 1);
         msgBuffer[3]  =  STATUS_CMD_OK;
         break;
 
@@ -495,12 +491,6 @@ bootloader:
           msgBuffer[2]  =  boot_lock_fuse_bits_get(mode);
           msgBuffer[3]  =  STATUS_CMD_OK;
         }
-        break;
-
-      case CMD_CHIP_ERASE_ISP:
-        /* Chip erasing not supported */
-        msgLength = 2;
-        msgStatus = STATUS_CMD_FAILED;
         break;
 
       case CMD_LOAD_ADDRESS:
