@@ -176,6 +176,7 @@ typedef union {
 /*
  * function prototypes
  */
+uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
 void flash_write_page(address_t address, const unsigned char* p);
 void loadSketch(PHN_Settings *boot_flags);
 void saveSketch(PHN_Settings *boot_flags);
@@ -207,6 +208,39 @@ void flash_write_page(address_t address, const unsigned char* p) {
 
 //************************************************************************
 
+/* 
+ * Parameters for the SPI_MULTI and READ_LOCK/FUSE/SIG_ISP commands.
+ * The following specification was found during tests with AVRDude:
+ * SIGNATURE: [0]==0x30  with addr = ([2] * 2) or addr = ([2] << 1)
+ * LFUSE:     [0]==0x50 && [1]==0x00  with addr = GET_LOW_FUSE_BITS (0x00)
+ * LOCK:      [0]==0x58 && [1]==0x00  with addr = GET_LOCK_BITS (0x01)
+ * EFUSE:     [0]==0x50 && [1]==0x08  with addr = GET_EXTENDED_FUSE_BITS (0x02)
+ * HFUSE:     [0]==0x58 && [1]==0x08  with addr = GET_HIGH_FUSE_BITS (0x03)
+ *
+ * From this table we can conclude that:
+ * [0] bit 0x08 set: addr |= 1
+ * [1] bit 0x08 set: addr |= 2
+ *
+ * As a result, this would logically translate to:
+ * addr = ([0]==0x58) | (([1]==0x08) << 1);
+ * addr = (([0] & 0x08) >> 3) | ([1] >> 2);
+ * addr = ((([0] & 0x08) >> 1) | [1]) >> 2;
+ */
+uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
+  uint8_t address;
+  if (b0 == 0x30) {
+    address = (b2 << 1);
+    return boot_signature_byte_get(address);
+  } else if (b0 & 0x50) {
+    address = ((((b0 & 0x08) >> 1) | b1) >> 2);
+    return boot_lock_fuse_bits_get(address);
+  } else {
+    return 0x00;
+  }
+}
+
+//************************************************************************
+
 /* Waits for a byte to become available on UART */
 static uint8_t waitForData() {
   unsigned long boot_count = 0;
@@ -233,6 +267,7 @@ int main(void) {
   unsigned char  msgBuffer_full[600];
   unsigned char* msgBuffer = (msgBuffer_full + 5);
   unsigned char  msgStatus;
+  unsigned char  msgByteResult;
   unsigned char  c, *p;
   unsigned char  isLeave;
   unsigned char  isCommandProcessed;
@@ -397,100 +432,53 @@ bootloader:
      */    
     switch (msgBuffer[0]) {
       case CMD_SPI_MULTI:
-        {
-          unsigned char answerByte;
-          unsigned char mode;
-
-          if (msgBuffer[4]== 0x30) {
-            answerByte = boot_signature_byte_get(msgBuffer[6] << 1);
-          } else if (msgBuffer[4] & 0x50) {
-            if (msgBuffer[4] == 0x58) {
-              mode = GET_HIGH_FUSE_BITS;
-            } else {
-              mode = GET_LOW_FUSE_BITS;
-            }
-            answerByte = boot_lock_fuse_bits_get(mode);
-          } else {
-            /* Default value for unknown requests */
-            answerByte = 0;
-          }
-          /* Send a response with the requested byte */
-          msgLength     =  7;
-          msgBuffer[2]  =  0;
-          msgBuffer[3]  =  msgBuffer[4];
-          msgBuffer[4]  =  0;
-          msgBuffer[5]  =  answerByte;
-        }
+        /* Send the requested parameter back */
+        msgBuffer[2] = 0;
+        msgBuffer[3] = msgBuffer[4];
+        msgBuffer[4] = STATUS_CMD_OK;
+        msgBuffer[5] = readParameter(msgBuffer[3], msgBuffer[5], msgBuffer[6]);
+        msgLength    = 7;
         break;
 
-      case CMD_SIGN_ON:
-        msgLength = sizeof(SIGNATURE_NAME) + 2;
-        memcpy(msgBuffer + 2, SIGNATURE_NAME, sizeof(SIGNATURE_NAME));
+      case CMD_READ_SIGNATURE_ISP:
+      case CMD_READ_LOCK_ISP:
+      case CMD_READ_FUSE_ISP:
+        /* Read parameter - similar arguments are used for signature, lock and fuse */
+        msgBuffer[2] = readParameter(msgBuffer[2], msgBuffer[3], msgBuffer[4]);
+        msgBuffer[3] = STATUS_CMD_OK;
+        msgLength    = 4;
         break;
 
       case CMD_GET_PARAMETER:
-        {
-          unsigned char value;
-
-          switch(msgBuffer[1]) {
-            case PARAM_BUILD_NUMBER_LOW:
-              value = CONFIG_PARAM_BUILD_NUMBER_LOW;
-              break;
-            case PARAM_BUILD_NUMBER_HIGH:
-              value = CONFIG_PARAM_BUILD_NUMBER_HIGH;
-              break;
-            case PARAM_HW_VER:
-              value = CONFIG_PARAM_HW_VER;
-              break;
-            case PARAM_SW_MAJOR:
-              value = CONFIG_PARAM_SW_MAJOR;
-              break;
-            case PARAM_SW_MINOR:
-              value = CONFIG_PARAM_SW_MINOR;
-              break;
-            default:
-              value = 0;
-              break;
-          }
-          msgLength    = 3;
-          msgBuffer[2] = value;
+        switch(msgBuffer[1]) {
+          case PARAM_BUILD_NUMBER_LOW:
+             msgByteResult = CONFIG_PARAM_BUILD_NUMBER_LOW; break;
+          case PARAM_BUILD_NUMBER_HIGH:
+             msgByteResult = CONFIG_PARAM_BUILD_NUMBER_HIGH; break;
+          case PARAM_HW_VER:
+             msgByteResult = CONFIG_PARAM_HW_VER; break;
+          case PARAM_SW_MAJOR:
+             msgByteResult = CONFIG_PARAM_SW_MAJOR; break;
+          case PARAM_SW_MINOR:
+             msgByteResult = CONFIG_PARAM_SW_MINOR; break;
+          default:
+             msgByteResult = 0; break;
         }
+        msgBuffer[2] = msgByteResult;
+        msgLength    = 3;
+        break;
+
+      case CMD_SIGN_ON:
+        memcpy(msgBuffer + 2, SIGNATURE_NAME, sizeof(SIGNATURE_NAME));
+        msgLength = sizeof(SIGNATURE_NAME) + 2;
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
         isLeave   = 1;
         /* Fall-through */
-
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
         msgLength  =  2;
-        break;
-
-      case CMD_READ_SIGNATURE_ISP:
-        msgLength     =  4;
-        msgBuffer[2]  =  boot_signature_byte_get(msgBuffer[4] << 1);
-        msgBuffer[3]  =  STATUS_CMD_OK;
-        break;
-
-      case CMD_READ_LOCK_ISP:
-      case CMD_READ_FUSE_ISP:
-        {
-          unsigned char mode;
-          if (msgBuffer[0] == CMD_READ_LOCK_ISP) {
-            mode = GET_LOCK_BITS;
-          } else if (msgBuffer[2] == 0x50) {
-            if (msgBuffer[3] == 0x08) {
-              mode = GET_EXTENDED_FUSE_BITS;
-            } else {
-              mode = GET_LOW_FUSE_BITS;
-            }
-          } else {
-            mode = GET_HIGH_FUSE_BITS;
-          }
-          msgLength     =  4;
-          msgBuffer[2]  =  boot_lock_fuse_bits_get(mode);
-          msgBuffer[3]  =  STATUS_CMD_OK;
-        }
         break;
 
       case CMD_LOAD_ADDRESS:
