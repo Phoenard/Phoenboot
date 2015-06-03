@@ -176,18 +176,24 @@ typedef union {
  * function prototypes
  */
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
+void flash_enable_rww();
 void flash_write_page(address_t address, const unsigned char* p);
 void changeLoadedSketch(PHN_Settings &boot_flags);
 void saveBootflags(PHN_Settings &boot_flags);
 
 //*****************************************************************************
 
+void flash_enable_rww() {
+  boot_spm_busy_wait();
+  boot_rww_enable();
+}
+
 void flash_write_page(address_t address, const unsigned char* p) {
   /* Memory protection */
   if (address >= APP_END || address & 0xFF) return;
 
-  /* Erase memory; wait for erasing to complete */
-  boot_page_erase(address);
+  /* Erase memory for first block written */
+  if (!address) boot_page_erase(0);
   boot_spm_busy_wait();
 
   /* Write flash memory data */
@@ -198,10 +204,12 @@ void flash_write_page(address_t address, const unsigned char* p) {
     p        += 2;
   } while (p != p_end);
 
-  /* Wait for writing to finish and re-enable RWW */
+  /* Write the page and wait for it to complete */
   boot_page_write(address - SPM_PAGESIZE);
   boot_spm_busy_wait();
-  boot_rww_enable();
+
+  /* Erase the next upcoming page while new data is received */
+  boot_page_erase(address);
 }
 
 //************************************************************************
@@ -596,15 +604,17 @@ bootloader:
               case CMD_READ_FLASH_ISP:
                 /* Set device icon */
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
-                                    
-                /* Read FLASH, half the size to convert from byte to word space */
-                size >>= 1;
+
+                /* Wait for any operations to finish and enable RWW */
+                flash_enable_rww();
+
+                /* Read FLASH, where size is in WORD space; reading 2 bytes at a time */
                 do {
                   /* Read word in memory, copy to message buffer and select next word */
                   PTR_TO_WORD(p) = pgm_read_word_far(address << 1);
                   p += 2;
                   address++;
-                } while (--size);
+                } while (size -= 2);
                 break;
 
               case CMD_READ_EEPROM_ISP:
@@ -701,6 +711,9 @@ bootloader:
 
   /* Post-programming program label to jump to, skipping the main bootloader */
 program:
+
+  /* Wait for any operations to finish and enable RWW */
+  flash_enable_rww();
 
   /* Save bootloader flags */
   saveBootflags(boot_flags);   
