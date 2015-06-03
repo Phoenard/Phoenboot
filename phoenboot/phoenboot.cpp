@@ -163,6 +163,7 @@ typedef uint32_t address_t;
 typedef union {
   unsigned char bytes[2];
   uint16_t value;
+  uint8_t* ptr;
 } uint16_pack_t;
 
 /* Eases the transformation from four unsigned bytes to unsigned long */
@@ -467,6 +468,30 @@ bootloader:
         msgLength.value = 2;
         break;
 
+      case CMD_READ_RAM_BYTE_ISP:
+        /* Clear mask byte so output is not affected */
+        msgBuffer[3] = 0x00;
+      case CMD_PROGRAM_RAM_BYTE_ISP:
+        {
+          /* Access single RAM byte using an address, mask and value */
+          uint16_pack = {msgBuffer[2], msgBuffer[1]};
+          uint8_t* address    = uint16_pack.ptr;
+          uint8_t  data_mask  = msgBuffer[3];
+          uint8_t  data_value = msgBuffer[4];
+
+          /* Send back the updated data at the address */
+          msgBuffer[2] = (*address & ~data_mask) | (data_value & data_mask);
+          msgLength.value = 3;
+
+          /* If specified, write to the address */
+          if (msgBuffer[0] == CMD_PROGRAM_RAM_BYTE_ISP) {
+            *address = msgBuffer[2];
+          }
+          break;
+        }
+
+      case CMD_READ_RAM_ISP:
+      case CMD_PROGRAM_RAM_ISP:
       case CMD_READ_SD_ISP:
       case CMD_PROGRAM_SD_ISP:
       case CMD_PROGRAM_SD_FAT_ISP:
@@ -527,30 +552,31 @@ bootloader:
                 break;
 
               case CMD_PROGRAM_EEPROM_ISP:
-                {
-                  /* Set device icon */
-                  iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM;
+                /* Set device icon */
+                iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM;
 
-                  /* Write EEPROM, full block */
-                  eeprom_write_block(p, (void*) ((uint16_t) address), size);
-                  address += size;
-                }
+                /* Write EEPROM, full block */
+                eeprom_write_block(p, (void*) ((uint16_t) address), size);
+                address += size;
                 break;
 
               case CMD_PROGRAM_SD_FAT_ISP:
                 /* If writing FAT, it's the same logic, but handle mirror FAT */
                 volume_cacheFATMirror = volume.isMultiFat;
               case CMD_PROGRAM_SD_ISP:
-                {
-                  /* Set device icon */
-                  iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD;
+                /* Set device icon */
+                iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD;
 
-                  /* Write Micro-SD, full block */
-                  memcpy(volume_cacheBuffer.data, p, size);
-                  volume_writeCache(address);
-                  address++;
-                  sdAccessed  =1;
-                }
+                /* Write Micro-SD, full block */
+                memcpy(volume_cacheBuffer.data, p, size);
+                volume_writeCache(address);
+                address++;
+                sdAccessed  =1;
+                break;
+
+              case CMD_PROGRAM_RAM_ISP:
+                memcpy((uint8_t*) address, p, size);
+                address += size;
                 break;
             }
           } else {
@@ -558,43 +584,42 @@ bootloader:
             msgLength.value += size;
             switch (msgBuffer[0]) {
               case CMD_READ_FLASH_ISP:
-                {
-                  /* Set device icon */
-                  iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
+                /* Set device icon */
+                iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
                                     
-                  /* Read FLASH, half the size to convert from byte to word space */
-                  size >>= 1;
-                  do {
-                    /* Read word in memory, copy to message buffer and select next word */
-                    PTR_TO_WORD(p) = pgm_read_word_far(address << 1);
-                    p += 2;
-                    address++;
-                  } while (--size);
-                }
+                /* Read FLASH, half the size to convert from byte to word space */
+                size >>= 1;
+                do {
+                  /* Read word in memory, copy to message buffer and select next word */
+                  PTR_TO_WORD(p) = pgm_read_word_far(address << 1);
+                  p += 2;
+                  address++;
+                } while (--size);
                 break;
 
               case CMD_READ_EEPROM_ISP:
-                {
-                  /* Set device icon */
-                  iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
+                /* Set device icon */
+                iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
 
-                  /* Read EEPROM, full block */
-                  eeprom_read_block(p, (void*) ((uint16_t) address), size);
-                  address += size;
-                }
+                /* Read EEPROM, full block */
+                eeprom_read_block(p, (void*) ((uint16_t) address), size);
+                address += size;
                 break;
 
               case CMD_READ_SD_ISP:
-                {
-                  /* Set device icon */
-                  iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
+                /* Set device icon */
+                iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
 
-                  /* Read Micro-SD, full block */
-                  volume_readCache(address);
-                  memcpy(p, volume_cacheBuffer.data, size);
-                  address++;
-                  sdAccessed = 1;
-                }
+                /* Read Micro-SD, full block */
+                volume_readCache(address);
+                memcpy(p, volume_cacheBuffer.data, size);
+                address++;
+                sdAccessed = 1;
+                break;
+
+              case CMD_READ_RAM_ISP:
+                memcpy(p, (uint8_t*) address, size);
+                address += size;
                 break;
             }
           }

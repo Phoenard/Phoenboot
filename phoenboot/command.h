@@ -89,6 +89,10 @@ const unsigned char  CMD_READ_OSCCAL_HVSP                = 0x3C;
 
 // ***************[ Custom commands for Phoenard Bootloader ]***************
 
+const unsigned char  CMD_READ_RAM_BYTE_ISP               = 0xE0;
+const unsigned char  CMD_PROGRAM_RAM_BYTE_ISP            = 0xE1;
+const unsigned char  CMD_READ_RAM_ISP                    = 0xE2;
+const unsigned char  CMD_PROGRAM_RAM_ISP                 = 0xE3;
 const unsigned char  CMD_INIT_SD_ISP                     = 0xE6;
 const unsigned char  CMD_PROGRAM_SD_ISP                  = 0xE7;
 const unsigned char  CMD_READ_SD_ISP                     = 0xE8;
