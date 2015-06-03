@@ -490,6 +490,16 @@ bootloader:
           break;
         }
 
+      case CMD_READ_ANALOG_ISP:
+        ADMUX = msgBuffer[3];
+        ADCSRB = msgBuffer[2];
+        ADCSRA = msgBuffer[1];
+        while (ADCSRA & (1<<ADSC));
+        msgBuffer[3] = ADCL;
+        msgBuffer[2] = ADCH;
+        msgLength.value = 5;
+        break;
+
       case CMD_READ_RAM_ISP:
       case CMD_PROGRAM_RAM_ISP:
       case CMD_READ_SD_ISP:
