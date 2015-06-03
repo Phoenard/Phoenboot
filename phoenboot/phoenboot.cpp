@@ -266,6 +266,7 @@ int main(void) {
   unsigned char  msgStatus;
   unsigned char  c, *p;
   unsigned char  isLeave;
+  unsigned char  isLoadingNeeded;
   unsigned char  iconFlags;
   uint16_pack_t  uint16_pack;
   uint32_pack_t  uint32_pack;
@@ -321,18 +322,16 @@ int main(void) {
   /* Go here to start the bootloader, past the initialization */
 bootloader:
 
-  /* If HOME button is held down, reset sketch */
+  /* Handle load instructions from EEPROM / SELECT-button */
+  isLoadingNeeded = boot_flags.flags & SETTINGS_LOAD;
   if (!(SELECT_IN & SELECT_MASK)) {
     memcpy(boot_flags.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
-    boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
+    isLoadingNeeded = SETTINGS_LOAD;
   }
 
-  /* 0x1 = Sketch needs to be loaded from SD */
-  if (boot_flags.flags & SETTINGS_LOAD) {
-    /* Save old modified sketch and load a new sketch */
+  /* Handle loading of a sketch from Micro-SD. Go to program right away. */
+  if (isLoadingNeeded) {
     changeLoadedSketch(boot_flags);
-
-    /* Directly go to the program when loaded - bootloader has timed out anyway */
     goto program;
   }
 
@@ -766,6 +765,9 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
       file_flush();
     }
   }
+
+  /* Ensure load flag is kept specified; force-save it */
+  boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
 
   /* Save boot flags right now to prevent saving and to keep trying to load */
   saveBootflags(boot_flags);
