@@ -745,7 +745,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
         /* Write a chunk of data when end is reached, or bytecount is reached */
         if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
-          file_write_hex_line(buff, buff_len, address_write, 0x0);
+          file_append_hex_line(buff, buff_len, address_write, 0x0);
           address_write += buff_len;
           buff_len = 0;
 
@@ -753,13 +753,13 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
           if (!(address_write & 0xFFFF)) {
             buff[4] = address_write >> 12;
             buff[5] = 0;
-            file_write_hex_line(buff, 2, 0x0000, 0x2);
+            file_append_hex_line(buff, 2, 0x0000, 0x2);
           }
         }
       } while (!reached_end);
 
       /* Write data end line */
-      file_write_hex_line(buff, 0, 0x0000, 0x1);
+      file_append_hex_line(buff, 0, 0x0000, 0x1);
 
       /* Flush any buffered data to SD */
       file_flush();
@@ -811,7 +811,6 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     unsigned char data_buff[SPM_PAGESIZE*2];
     unsigned char data_page_buffer[SPM_PAGESIZE*2];
     unsigned int data_page_buffer_len = 0;
-    unsigned long file_size = file_available;
     while (file_position < file_size) {
       LCD_write_progress(file_position, file_size, STATUS_COLOR_SDLOAD);
 
