@@ -134,6 +134,7 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
 #define UART_CONTROL_REG         UCSR0B
 #define UART_ENABLE_TRANSMITTER  TXEN0
 #define UART_ENABLE_RECEIVER     RXEN0
+#define UART_REGISTER_EMPTY      UDRE0
 #define UART_TRANSMIT_COMPLETE   TXC0
 #define UART_RECEIVE_COMPLETE    RXC0
 #define UART_DATA_REG            UDR0
@@ -245,17 +246,6 @@ uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
   }
 }
 
-//************************************************************************
-
-/* Waits for a byte to become available on UART */
-static uint8_t waitForData() {
-  unsigned long boot_count = 0;
-  while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) {
-    if ((boot_count+=BOOT_START_DIV) & BOOT_START_MULT) return 0;
-  }
-  return 1;
-}
-
 //*****************************************************************************
 
 //*  for watch dog timer startup
@@ -265,7 +255,7 @@ void (*app_start)(void) = APP_START;
 
 int main(void) {
   address_t address;
-  unsigned char  input_parseState;
+  unsigned long  input_timeoutCtr;
   uint16_pack_t  input_dataLength;
   unsigned int   input_dataIndex;
   unsigned char  input_checksum;
@@ -354,56 +344,33 @@ bootloader:
      * Read in a full message into the buffer
      * Increments first time - start -1
      */
-    input_parseState = ST_START-1;
     input_checksum = 0;
-    input_dataIndex = 0;
-    for (;;) {
-      /* Wait for data to be available on UART, on timeout go to program */
-      if (!waitForData()) goto program;
+    input_dataIndex = ST_START-1;
+    do {
+      /* Wait until a new byte of data is available; on timeout run program */
+      input_timeoutCtr = 0;
+      while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) {
+        if ((input_timeoutCtr+=BOOT_START_DIV) & BOOT_START_MULT) goto program;
+      }
 
-      /* Receive next byte of data and update the checksum */
+      /* Receive next byte of data, update the checksum and fill the buffer */
       c = UART_DATA_REG;
       input_checksum ^= c;
+      msgBuffer_full[++input_dataIndex] = c;
 
-      /* If end of data reached, verify it using the checksum */
-      if (input_parseState == ST_GET_DATA) {
-        if (input_dataIndex == input_dataLength.value) {
-          /* Send error message upon checksum failure */
-          if (input_checksum) {
-            msgBuffer[0] = ANSWER_CKSUM_ERROR;
-          }
-          /* Break to start processing */
-          break;
-        }
-      } else {
-        input_parseState++;
-      }
+      /* Update the input data length using the data currently inside the buffer */
+      input_dataLength.bytes[1] = msgBuffer_full[ST_MSG_SIZE_1];
+      input_dataLength.bytes[0] = msgBuffer_full[ST_MSG_SIZE_2];
 
-      /* Process next message byte */
-      if (input_parseState == ST_START) {
-        /* Restart if start token check fails */
-        if (c != MESSAGE_START) goto bootloader;
+      /* Verify the start and middle token of the current message */
+      if ( (input_dataIndex == ST_GET_TOKEN && c != TOKEN) || 
+           (  msgBuffer_full[ST_START] != MESSAGE_START  ) ) goto bootloader;
 
-      } else if (input_parseState == ST_GET_SEQ_NUM) {
-        /* Set sequence number in response */
-        msgBuffer_full[1] = c;
+    } while (input_dataIndex < (input_dataLength.value+5));
 
-      } else if (input_parseState == ST_MSG_SIZE_1) {
-        /* Set the high-order length byte */
-        input_dataLength.bytes[1] = c;
-
-      } else if (input_parseState == ST_MSG_SIZE_2) {
-        /* Set the low-order length byte */
-        input_dataLength.bytes[0] = c;
-
-      } else if (input_parseState == ST_GET_TOKEN) {
-        /* Restart if token check fails */
-        if (c != TOKEN) goto bootloader;
-
-      } else {
-        /* Append message data */
-        msgBuffer[input_dataIndex++] = c;
-      }
+    /* Send error message upon checksum failure */
+    if (input_checksum) {
+      msgBuffer[0] = ANSWER_CKSUM_ERROR;
     }
 
     /*
@@ -678,10 +645,8 @@ bootloader:
      * Now send answer message back
      */
     /* Set the header of the message to send */
-    msgBuffer_full[0] = MESSAGE_START;
     msgBuffer_full[2] = msgLength.bytes[1];
     msgBuffer_full[3] = msgLength.bytes[0];
-    msgBuffer_full[4] = TOKEN;
     msgBuffer_full[6] = msgStatus;
 
     /* Initialize the display, draw icon of current file */
@@ -702,10 +667,9 @@ bootloader:
       *checksum_byte ^= *p;  /* Update checksum */
       p++;                   /* Next byte */
       msgLength.value--;     /* Update length to send */
-      
-      /* Complete transmission and clear TX flag */
-      while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));
-      UART_STATUS_REG |= (1 << UART_TRANSMIT_COMPLETE);
+
+      /* Wait for the transmit data register to be empty */
+      while (!(UART_STATUS_REG & (1 << UART_REGISTER_EMPTY)));
     } while (msgLength.value);
   }
 
