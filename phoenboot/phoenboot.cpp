@@ -93,6 +93,12 @@ THE SOFTWARE.
  */
 #define HEX_FORMAT_BYTECOUNT 16
 
+/* Formats for sketch .HEX files */
+#define SKETCH_FMT_NONE     0
+#define SKETCH_FMT_HEX      1
+#define SKETCH_FMT_BIN      2
+#define SKETCH_FMT_DEFAULT  SKETCH_FMT_HEX
+
 /* Default Phoenard settings to be used by default */
 #define SETTINGS_DEFAULT_SKETCH        {'S', 'K', 'E', 'T', 'C', 'H', 'E', 'S'}
 #define SETTINGS_DEFAULT_FLAGS         (SETTINGS_LOAD | SETTINGS_CHANGED | SETTINGS_TOUCH_VER_INV)
@@ -182,6 +188,7 @@ static const address_t APP_START_ADDR = {APP_START};
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
 void flash_enable_rww();
 void flash_write_page(address_t address, const unsigned char* p);
+uint8_t openSketchFile(const char* filename, uint8_t mode);
 void changeLoadedSketch(PHN_Settings &boot_flags);
 void saveBootflags(PHN_Settings &boot_flags);
 
@@ -718,7 +725,24 @@ void saveBootflags(PHN_Settings &boot_flags) {
   }
 }
 
+uint8_t openSketchFile(const char* filename, uint8_t mode) {
+  if (!file_open(filename, "HEX", mode)) return SKETCH_FMT_NONE;
+  if (!file_size) return SKETCH_FMT_DEFAULT;
+
+  /* Read out the format of the file using the first 12 bytes */
+  uint8_t fmt = SKETCH_FMT_HEX;
+  uint8_t* data = volume_cacheCurrentBlock(0);
+  for (unsigned char i = 0; i < 12; i++) {
+    if (data[i] < 0x30 || data[i] > 0x46) {
+      fmt = SKETCH_FMT_BIN;
+    }
+  }
+  return fmt;
+}
+
 void changeLoadedSketch(PHN_Settings &boot_flags) {
+  uint8_t file_format;
+  
   /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
   if (boot_flags.flags & SETTINGS_MODIFIED) {
     boot_flags.flags &= ~SETTINGS_MODIFIED;
@@ -728,8 +752,11 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags.sketch_current);
 
     /* Initiate the saving process to the SD */
-    /* Note: always saves contents in Intel HEX format */
-    if (file_open(boot_flags.sketch_current, "HEX", FILE_WIPE)) {
+    file_format = openSketchFile(boot_flags.sketch_current, FILE_CREATE);
+    if (file_format) {
+
+      /* Delete old file contents */
+      file_truncate();
 
       address_t address_read = APP_START_ADDR;
       address_t address_write = APP_START_ADDR;
@@ -747,21 +774,28 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
         /* Write a chunk of data when end is reached, or bytecount is reached */
         if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
-          file_append_hex_line(buff, buff_len, address_write.value, 0x0);
-          address_write.value += buff_len;
-          buff_len = 0;
+          if (file_format == SKETCH_FMT_BIN) {
+            file_write((const char*) buff+4, buff_len);
+            
+          } else {
+            file_append_hex_line(buff, buff_len, address_write.value, 0x0);
+            address_write.value += buff_len;
 
-          /* Increment extended data address as needed */
-          if (!address_write.words[0]) {
-            buff[4] = address_write.value >> 12;
-            buff[5] = 0;
-            file_append_hex_line(buff, 2, 0x0000, 0x2);
+            /* Increment extended data address as needed */
+            if (!address_write.words[0]) {
+              buff[4] = address_write.value >> 12;
+              buff[5] = 0;
+              file_append_hex_line(buff, 2, 0x0000, 0x2);
+            }
+
+            /* Write end delimiter */
+            if (reached_end) {
+              file_append_hex_line(buff, 0, 0x0000, 0x1);
+            }
           }
+          buff_len = 0;
         }
       } while (!reached_end);
-
-      /* Write data end line */
-      file_append_hex_line(buff, 0, 0x0000, 0x1);
 
       /* Flush any buffered data to SD */
       file_flush();
@@ -795,17 +829,8 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */
   address_t address = APP_START_ADDR;
-  if (!(oldFlags & SETTINGS_LOADWIPE) && file_open(boot_flags.sketch_current, "HEX", FILE_READ)) {
-    /* Check the first 12 bytes to see if they are all HEX (0-9 A-F) data */
-    /* If the file is empty either mode could be used since it reads random memory */
-    /* This does not matter because in either mode empty data is handled properly */
-    uint8_t* isHexData = volume_cacheCurrentBlock(0);
-    for (unsigned char i = 0; i < 12; i++) {
-      if (isHexData[i] < 0x30 || isHexData[i] > 0x46) {
-        isHexData = 0;
-        break;
-      }
-    }
+  if (!(oldFlags & SETTINGS_LOADWIPE) && 
+       (file_format = openSketchFile(boot_flags.sketch_current, FILE_READ)) ) {
 
     /* Perform loading from SD */
     unsigned char length;
@@ -816,11 +841,12 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     while (file_position < file_size) {
       LCD_write_progress(file_position, file_size, STATUS_COLOR_SDLOAD);
 
-      if (isHexData == 0) {
+      if (file_format == SKETCH_FMT_BIN) {
         /* Raw reading from the SD in blocks of 256 bytes at a time */
         flash_write_page(address, (unsigned char*) file_read(SPM_PAGESIZE));
         address.value += SPM_PAGESIZE;
         boot_flags.sketch_size = file_size;
+        
       } else {
         /* Reading Intel HEX format */
         file_read_hex_line(data_buff);
