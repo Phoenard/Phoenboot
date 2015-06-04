@@ -329,7 +329,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
       }
       if (lcd_progress >= LCD_PROG_CNT) {
         lcd_progress = 0;
-        lcd_progress_color = (lcd_progress_color ? LCD_BLACK : marqueeColor);
+        lcd_progress_color ^= marqueeColor;
       }
       new_progress = lcd_progress + LCD_PROG_MARQ_BATCH;
     }
