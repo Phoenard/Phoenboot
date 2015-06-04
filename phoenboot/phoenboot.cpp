@@ -157,9 +157,6 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
 /* Enables access to memory treated as an unsigned int */
 #define PTR_TO_WORD(p) (*((unsigned int*) (p)))
 
-/* Address type */
-typedef uint32_t address_t;
-
 /* Eases the transformation from two unsigned bytes to unsigned int */
 typedef union {
   unsigned char bytes[2];
@@ -170,8 +167,14 @@ typedef union {
 /* Eases the transformation from four unsigned bytes to unsigned long */
 typedef union {
   unsigned char bytes[4];
+  uint16_t words[2];
+  void* ptr[2];
   uint32_t value;
 } uint32_pack_t;
+
+/* Address type and start/constant */
+typedef uint32_pack_t address_t;
+static const address_t APP_START_ADDR = {APP_START};
 
 /*
  * function prototypes
@@ -191,26 +194,26 @@ void flash_enable_rww() {
 
 void flash_write_page(address_t address, const unsigned char* p) {
   /* Memory protection */
-  if (address >= APP_END || address & 0xFF) return;
+  if ((address.words[1] >= (APP_END>>16)) || address.bytes[0]) return;
 
   /* Erase memory for first block written */
-  if (!address) boot_page_erase(0);
+  if (!address.value) boot_page_erase(0);
   boot_spm_busy_wait();
 
   /* Write flash memory data */
   const unsigned char* p_end = p + SPM_PAGESIZE;
   do {
-    boot_page_fill(address, PTR_TO_WORD(p));
-    address  += 2;
-    p        += 2;
+    boot_page_fill(address.value, PTR_TO_WORD(p));
+    address.value += 2;
+    p += 2;
   } while (p != p_end);
 
   /* Write the page and wait for it to complete */
-  boot_page_write(address - SPM_PAGESIZE);
+  boot_page_write(address.value - SPM_PAGESIZE);
   boot_spm_busy_wait();
 
   /* Erase the next upcoming page while new data is received */
-  boot_page_erase(address);
+  boot_page_erase(address.value);
 }
 
 //************************************************************************
@@ -268,8 +271,6 @@ int main(void) {
   unsigned char  isLeave;
   unsigned char  isLoadingNeeded;
   unsigned char  iconFlags;
-  uint16_pack_t  uint16_pack;
-  uint32_pack_t  uint32_pack;
   PHN_Settings   boot_flags;
 
   //************************************************************************
@@ -337,7 +338,7 @@ bootloader:
 
   /* Bootloader logic starts here */
   isLeave = 0;
-  address = APP_START;
+  address = APP_START_ADDR;
   while (!isLeave) {
     /* 
      * Read in a full message into the buffer
@@ -436,9 +437,11 @@ bootloader:
         break;
 
       case CMD_LOAD_ADDRESS:
-        /* Reverse the byte order, use intermediate 32-bit to 4 byte struct */
-        uint32_pack = {msgBuffer[4], msgBuffer[3], msgBuffer[2], msgBuffer[1]};
-        address = uint32_pack.value;
+        /* Reverse the byte order */
+        address.bytes[0] = msgBuffer[4];
+        address.bytes[1] = msgBuffer[3];
+        address.bytes[2] = msgBuffer[2];
+        address.bytes[3] = msgBuffer[1];
         msgLength.value = 2;
         break;
 
@@ -448,8 +451,8 @@ bootloader:
       case CMD_PROGRAM_RAM_BYTE_ISP:
         {
           /* Access single RAM byte using an address, mask and value */
-          uint16_pack = {msgBuffer[2], msgBuffer[1]};
-          uint8_t* address    = uint16_pack.ptr;
+          uint16_pack_t addr_word = {msgBuffer[2], msgBuffer[1]};
+          uint8_t* address    = addr_word.ptr;
           uint8_t  data_mask  = msgBuffer[3];
           uint8_t  data_value = msgBuffer[4];
 
@@ -484,11 +487,13 @@ bootloader:
       case CMD_PROGRAM_FLASH_ISP:
       case CMD_PROGRAM_EEPROM_ISP:
         {
-          /* Read the to read/write size by swapping the two bytes and copying the memory */
-          uint16_pack = {msgBuffer[2], msgBuffer[1]};
-          uint8_t sdAccessed = 0;
-          unsigned int size = uint16_pack.value;
+          /* Read the size by using the msgLength 16-pack temporarily */
+          msgLength = {msgBuffer[2], msgBuffer[1]};
+          unsigned int size = msgLength.value;
           msgLength.value = 2;
+
+          /* Track whether the Micro-SD is accessed */
+          uint8_t sdAccessed = 0;
 
           /* Writing or reading? */
           if (msgBuffer[0] & 0x1) {
@@ -501,7 +506,7 @@ bootloader:
                   iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM;
 
                   /* Change address from word-space to byte-space */
-                  address <<= 1;
+                  address.value <<= 1;
 
                   /* Write next page of program memory */
                   flash_write_page(address, p);
@@ -512,7 +517,7 @@ bootloader:
                    * On some programmers it pads the end of the program with 0xFFFF data
                    * We must make sure to exclude that data from the program size
                    */
-                  if (!(boot_flags.flags & SETTINGS_CHANGED) || address >= boot_flags.sketch_size) {
+                  if (!(boot_flags.flags & SETTINGS_CHANGED) || address.value >= boot_flags.sketch_size) {
                     /* Calculate program size excluding trailing 0xFFFF */
                     unsigned int size_tmp = size;
                     do {
@@ -523,15 +528,15 @@ bootloader:
                       size_tmp -= 2;
                     } while (size_tmp);
 
-                    boot_flags.sketch_size = address + size_tmp;
+                    boot_flags.sketch_size = address.value + size_tmp;
                     boot_flags.flags |= SETTINGS_MODIFIED | SETTINGS_CHANGED;
                   }
 
                   /* Increment address by the amount of data written out */
-                  address += size;
+                  address.value += size;
 
                   /* Change address back to word-space */
-                  address >>= 1;
+                  address.value >>= 1;
                 }
                 break;
 
@@ -540,8 +545,8 @@ bootloader:
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM;
 
                 /* Write EEPROM, full block */
-                eeprom_write_block(p, (void*) ((uint16_t) address), size);
-                address += size;
+                eeprom_write_block(p, address.ptr[0], size);
+                address.value += size;
                 break;
 
               case CMD_PROGRAM_SD_FAT_ISP:
@@ -553,14 +558,14 @@ bootloader:
 
                 /* Write Micro-SD, full block */
                 memcpy(volume_cacheBuffer.data, p, size);
-                volume_writeCache(address);
-                address++;
+                volume_writeCache(address.value);
+                address.value++;
                 sdAccessed  =1;
                 break;
 
               case CMD_PROGRAM_RAM_ISP:
-                memcpy((uint8_t*) address, p, size);
-                address += size;
+                memcpy(address.ptr[0], p, size);
+                address.value += size;
                 break;
             }
           } else {
@@ -577,9 +582,9 @@ bootloader:
                 /* Read FLASH, where size is in WORD space; reading 2 bytes at a time */
                 do {
                   /* Read word in memory, copy to message buffer and select next word */
-                  PTR_TO_WORD(p) = pgm_read_word_far(address << 1);
+                  PTR_TO_WORD(p) = pgm_read_word_far(address.value << 1);
                   p += 2;
-                  address++;
+                  address.value++;
                 } while (size -= 2);
                 break;
 
@@ -588,8 +593,8 @@ bootloader:
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
 
                 /* Read EEPROM, full block */
-                eeprom_read_block(p, (void*) ((uint16_t) address), size);
-                address += size;
+                eeprom_read_block(p, address.ptr[0], size);
+                address.value += size;
                 break;
 
               case CMD_READ_SD_ISP:
@@ -597,15 +602,15 @@ bootloader:
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
 
                 /* Read Micro-SD, full block */
-                volume_readCache(address);
+                volume_readCache(address.value);
                 memcpy(p, volume_cacheBuffer.data, size);
-                address++;
+                address.value++;
                 sdAccessed = 1;
                 break;
 
               case CMD_READ_RAM_ISP:
-                memcpy(p, (uint8_t*) address, size);
-                address += size;
+                memcpy(p, address.ptr[0], size);
+                address.value += size;
                 break;
             }
           }
@@ -729,29 +734,29 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     /* Note: always saves contents in Intel HEX format */
     if (file_open(boot_flags.sketch_current, "HEX", FILE_WIPE)) {
 
-      address_t address_read  = APP_START;
-      address_t address_write = APP_START;
+      address_t address_read = APP_START_ADDR;
+      address_t address_write = APP_START_ADDR;
       unsigned char buff[HEX_FORMAT_BYTECOUNT + 4];
       unsigned char buff_len = 0;
       char reached_end;
       do {
-        LCD_write_progress(address_read, boot_flags.sketch_size, STATUS_COLOR_SDSAVE);
+        LCD_write_progress(address_read.value, boot_flags.sketch_size, STATUS_COLOR_SDSAVE);
 
         /* Fill the buffer with data */
-        PTR_TO_WORD(buff + buff_len + 4) = pgm_read_word_far(address_read);
+        PTR_TO_WORD(buff + buff_len + 4) = pgm_read_word_far(address_read.value);
         buff_len += 2;
-        address_read += 2;
-        reached_end = (address_read >= boot_flags.sketch_size);
+        address_read.value += 2;
+        reached_end = (address_read.value >= boot_flags.sketch_size);
 
         /* Write a chunk of data when end is reached, or bytecount is reached */
         if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
-          file_append_hex_line(buff, buff_len, address_write, 0x0);
-          address_write += buff_len;
+          file_append_hex_line(buff, buff_len, address_write.value, 0x0);
+          address_write.value += buff_len;
           buff_len = 0;
 
           /* Increment extended data address as needed */
-          if (!(address_write & 0xFFFF)) {
-            buff[4] = address_write >> 12;
+          if (!address_write.words[0]) {
+            buff[4] = address_write.value >> 12;
             buff[5] = 0;
             file_append_hex_line(buff, 2, 0x0000, 0x2);
           }
@@ -792,7 +797,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */
-  address_t address = APP_START;
+  address_t address = APP_START_ADDR;
   if (!(oldFlags & SETTINGS_LOADWIPE) && file_open(boot_flags.sketch_current, "HEX", FILE_READ)) {
     /* Check the first 12 bytes to see if they are all HEX (0-9 A-F) data */
     /* If the file is empty either mode could be used since it reads random memory */
@@ -817,7 +822,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
       if (isHexData == 0) {
         /* Raw reading from the SD in blocks of 256 bytes at a time */
         flash_write_page(address, (unsigned char*) file_read(SPM_PAGESIZE));
-        address += SPM_PAGESIZE;
+        address.value += SPM_PAGESIZE;
         boot_flags.sketch_size = file_size;
       } else {
         /* Reading Intel HEX format */
@@ -836,12 +841,13 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
         /* Read the address part of data hex lines */
         if (!data_page_buffer_len && !recordtype) {
-          address = (address & 0xFF0000) | (((address_t) data_buff[1] << 8) | (address_t) data_buff[2]);
+          address.bytes[0] = data_buff[2];
+          address.bytes[1] = data_buff[1];
         }
 
         /* Extended data segment, we ignore data_buff[5] (out of range) */
         if (recordtype == 0x2) {
-          address = (address & 0xFFFF) | ((address_t) data_buff[4] << 12);
+          address.words[1] = ((uint16_t) data_buff[4] >> 4);
           continue;
         }
 
@@ -856,10 +862,10 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
           /* Move buffered data back to the start */
           if (data_page_buffer_len >= SPM_PAGESIZE) {
-            address += SPM_PAGESIZE;
+            address.value += SPM_PAGESIZE;
             data_page_buffer_len -= SPM_PAGESIZE;
           } else {
-            address += data_page_buffer_len;
+            address.value += data_page_buffer_len;
             data_page_buffer_len = 0;
           }
 
@@ -867,7 +873,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
           memcpy(data_page_buffer, data_page_buffer + SPM_PAGESIZE, data_page_buffer_len);
 
           /* Update sketch size with the updated address position */
-          boot_flags.sketch_size = address;
+          boot_flags.sketch_size = address.value;
         }
 
         if (recordtype == 0x1) {
