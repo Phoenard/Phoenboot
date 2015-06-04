@@ -196,8 +196,9 @@ void flash_write_page(address_t address, const unsigned char* p) {
   /* Memory protection */
   if ((address.words[1] >= (APP_END>>16)) || address.bytes[0]) return;
 
-  /* Erase memory for first block written */
-  if (!address.value) boot_page_erase(0);
+  /* Erase the page before writing */
+  boot_spm_busy_wait();
+  boot_page_erase(address.value);
   boot_spm_busy_wait();
 
   /* Write flash memory data */
@@ -208,12 +209,8 @@ void flash_write_page(address_t address, const unsigned char* p) {
     p += 2;
   } while (p != p_end);
 
-  /* Write the page and wait for it to complete */
+  /* Write the page but don't wait; allow new data to be read */
   boot_page_write(address.value - SPM_PAGESIZE);
-  boot_spm_busy_wait();
-
-  /* Erase the next upcoming page while new data is received */
-  boot_page_erase(address.value);
 }
 
 //************************************************************************
@@ -560,7 +557,7 @@ bootloader:
                 memcpy(volume_cacheBuffer.data, p, size);
                 volume_writeCache(address.value);
                 address.value++;
-                sdAccessed  =1;
+                sdAccessed = 1;
                 break;
 
               case CMD_PROGRAM_RAM_ISP:
@@ -848,6 +845,13 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
         /* Extended data segment, we ignore data_buff[5] (out of range) */
         if (recordtype == 0x2) {
           address.words[1] = ((uint16_t) data_buff[4] >> 4);
+          continue;
+        }
+
+        /* Extended Linear Address, found to exist sometimes */
+        if (recordtype == 0x4) {
+          address.bytes[2] = data_buff[5];
+        /*address.bytes[3] = data_buff[4]; (out of range) */
           continue;
         }
 
