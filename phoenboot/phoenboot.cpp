@@ -387,7 +387,7 @@ bootloader:
 
     /*
      * Now process the STK500 commands, see Atmel Appnote AVR068
-     */    
+     */
     switch (msgBuffer[0]) {
       case CMD_SPI_MULTI:
         /* Send the requested parameter back */
@@ -395,6 +395,7 @@ bootloader:
         msgBuffer[3] = msgBuffer[4];
         msgBuffer[4] = STATUS_CMD_OK;
         msgBuffer[5] = readParameter(msgBuffer[3], msgBuffer[5], msgBuffer[6]);
+        msgBuffer[6] = STATUS_CMD_OK;
         msgLength.value = 7;
         break;
 
@@ -433,7 +434,7 @@ bootloader:
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
-        isLeave   = 1;
+        isLeave = 1;
         /* Fall-through */
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
@@ -478,8 +479,25 @@ bootloader:
         while (ADCSRA & (1<<ADSC));
         msgBuffer[3] = ADCL;
         msgBuffer[2] = ADCH;
-        msgLength.value = 5;
+        msgLength.value = 4;
         break;
+
+      case CMD_TRANSFER_SPI_ISP:
+        {
+          /* 
+           * Write data to SPI and read the received data.  This logic
+           * supports full-duplex mode; every byte transmitted results
+           * in one byte received. If you only want to receive data,
+           * simply pad the transmit buffer with 0xFF.
+           */
+          msgLength.value = 2;
+          while (msgLength.value <= input_dataLength.value) {
+            SPDR = msgBuffer[msgLength.value-1];
+            while (!(SPSR & (1 << SPIF)));
+            msgBuffer[msgLength.value++] = SPDR;
+          }
+          break;
+        }
 
       case CMD_READ_RAM_ISP:
       case CMD_PROGRAM_RAM_ISP:
@@ -653,9 +671,13 @@ bootloader:
      * Now send answer message back
      */
     /* Set the header of the message to send */
-    msgBuffer_full[2] = msgLength.bytes[1];
-    msgBuffer_full[3] = msgLength.bytes[0];
-    msgBuffer_full[6] = msgStatus;
+    /*msgBuffer_full[0] = MESSAGE_START;*/       /* Start token */
+    /*msgBuffer_full[1] = msgBuffer_full[1];*/   /* Sequence number */
+    msgBuffer_full[2] = msgLength.bytes[1];      /* Length high */
+    msgBuffer_full[3] = msgLength.bytes[0];      /* Length low */
+    /*msgBuffer_full[4] = TOKEN;*/               /* Token */
+    /*msgBuffer_full[5] = msgBuffer_full[5];*/   /* Command ID */
+    msgBuffer_full[6] = msgStatus;               /* Command status */
 
     /* Initialize the display, draw icon of current file */
     /* For some reason, putting this after the above lines reduces binary size... */
