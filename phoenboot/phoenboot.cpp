@@ -270,6 +270,7 @@ int main(void) {
   uint16_pack_t  msgLength;
   unsigned char  msgBuffer_full[600];
   unsigned char* msgBuffer = (msgBuffer_full + 5);
+  unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
   unsigned char  c, *p;
   unsigned char  isLeave;
@@ -374,7 +375,7 @@ bootloader:
 
     /* Send error message upon checksum failure */
     if (input_checksum) {
-      msgBuffer[0] = ANSWER_CKSUM_ERROR;
+      msgCommand = ANSWER_CKSUM_ERROR;
     }
 
     /*
@@ -388,7 +389,7 @@ bootloader:
     /*
      * Now process the STK500 commands, see Atmel Appnote AVR068
      */
-    switch (msgBuffer[0]) {
+    switch (msgCommand) {
       case CMD_SPI_MULTI:
         /* Send the requested parameter back */
         msgBuffer[2] = 0;
@@ -466,7 +467,7 @@ bootloader:
           msgLength.value = 3;
 
           /* If specified, write to the address */
-          if (msgBuffer[0] == CMD_PROGRAM_RAM_BYTE_ISP) {
+          if (msgCommand == CMD_PROGRAM_RAM_BYTE_ISP) {
             *address = msgBuffer[2];
           }
           break;
@@ -518,10 +519,10 @@ bootloader:
           uint8_t sdAccessed = 0;
 
           /* Writing or reading? */
-          if (msgBuffer[0] & 0x1) {
+          if (msgCommand & 0x1) {
             unsigned char *p = (msgBuffer + 10);
 
-            switch (msgBuffer[0]) {
+            switch (msgCommand) {
               case CMD_PROGRAM_FLASH_ISP:
                 {
                   /* Set device icon */
@@ -593,7 +594,7 @@ bootloader:
           } else {
             unsigned char *p = (msgBuffer + 2);
             msgLength.value += size;
-            switch (msgBuffer[0]) {
+            switch (msgCommand) {
               case CMD_READ_FLASH_ISP:
                 /* Set device icon */
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
@@ -676,7 +677,7 @@ bootloader:
     msgBuffer_full[2] = msgLength.bytes[1];      /* Length high */
     msgBuffer_full[3] = msgLength.bytes[0];      /* Length low */
     /*msgBuffer_full[4] = TOKEN;*/               /* Token */
-    /*msgBuffer_full[5] = msgBuffer_full[5];*/   /* Command ID */
+    /*msgBuffer_full[5] = msgCommand;*/          /* Command ID */
     msgBuffer_full[6] = msgStatus;               /* Command status */
 
     /* Initialize the display, draw icon of current file */
