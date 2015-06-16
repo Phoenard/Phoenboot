@@ -270,7 +270,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
 
   /* Redraw sketch icon as needed */
   if (drawSketchIcon) {
-    if (file_open(sketchIconFile, "SKI", FILE_READ)) {
+    if (file_open(sketchIconFile, "SKI", SDMIN_FILE_READ)) {
       /* Cache first block containing icon data */
       volume_cacheCurrentBlock(0);
     } else {

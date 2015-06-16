@@ -99,21 +99,6 @@ THE SOFTWARE.
 #define SKETCH_FMT_BIN      2
 #define SKETCH_FMT_DEFAULT  SKETCH_FMT_HEX
 
-/* Default Phoenard settings to be used by default */
-#define SETTINGS_DEFAULT_SKETCH        {'S', 'K', 'E', 'T', 'C', 'H', 'E', 'S'}
-#define SETTINGS_DEFAULT_FLAGS         (SETTINGS_LOAD | SETTINGS_CHANGED | SETTINGS_TOUCH_VER_INV)
-#define SETTINGS_DEFAULT_TOUCH_HOR_A   138
-#define SETTINGS_DEFAULT_TOUCH_HOR_B   171
-#define SETTINGS_DEFAULT_TOUCH_VER_A   134
-#define SETTINGS_DEFAULT_TOUCH_VER_B   115
-
-/* Default Phoenard settings, used to restore corrupted or wiped EEPROM */
-PHN_Settings SETTINGS_DEFAULT = {
-  SETTINGS_DEFAULT_TOUCH_HOR_A, SETTINGS_DEFAULT_TOUCH_HOR_B,
-  SETTINGS_DEFAULT_TOUCH_VER_A, SETTINGS_DEFAULT_TOUCH_VER_B,
-  SETTINGS_DEFAULT_SKETCH, SETTINGS_DEFAULT_SKETCH, 0, SETTINGS_DEFAULT_FLAGS
-};
-
 /*
  * HW and SW version, reported to AVRISP, must match version of AVRStudio
  */
@@ -654,7 +639,7 @@ bootloader:
             /* Ensure card is initialized by opening an arbitrary (non-existent) file */
             volume.isInitialized = 0;
             const char name_none[1] = {0};
-            file_open(name_none, name_none, FILE_READ);
+            file_open(name_none, name_none, SDMIN_FILE_READ);
 
             /* Respond with all known volume variables */
             msgLength.value = 2 + sizeof(CardVolume);
@@ -775,7 +760,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags.sketch_current);
 
     /* Initiate the saving process to the SD */
-    file_format = openSketchFile(boot_flags.sketch_current, FILE_CREATE);
+    file_format = openSketchFile(boot_flags.sketch_current, SDMIN_FILE_CREATE);
     if (file_format) {
 
       /* Delete old file contents */
@@ -853,7 +838,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   /* Don't load anything if WIPE flag is specified */
   address_t address = APP_START_ADDR;
   if (!(oldFlags & SETTINGS_LOADWIPE) && 
-       (file_format = openSketchFile(boot_flags.sketch_current, FILE_READ)) ) {
+       (file_format = openSketchFile(boot_flags.sketch_current, SDMIN_FILE_READ)) ) {
 
     /* Perform loading from SD */
     unsigned char length;
