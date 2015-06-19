@@ -6,8 +6,12 @@ the Micro-SD card.
 
 Using instructions stored in the back of the device's
 EEPROM the bootloader can be told to load a given sketch HEX file in the root
-directory of the Micro-SD card. As well, the computer can be used to remotely
-access the Micro-SD card through added stk500-based commands. 
+directory of the Micro-SD card. 
+
+Additional stk500-based commands have been added to read and write I/O registers,
+read/write the Micro-SD, control SPI and control the ADC using the computer.
+This allows for computer software to use and control the Phoenard with no
+requirement to flash the chip.
 
 All of this is done with a clear progress indicator on a ILI9325/ILI9328
 TFT LCD screen.
@@ -25,10 +29,16 @@ These features have been added to the stk500v2 protocol spec:
   * Keeps track of current program modification state
   * Automatically saves previous modified program when loading
 * New stk500v2 commands added for accessing Micro-SD:
+  * CMD_READ_RAM_BYTE_ISP(0xE0): Read a single byte of RAM memory
+  * CMD_PROGRAM_RAM_BYTE_ISP(0xE1): Write a single byte to RAM memory
+  * CMD_READ_RAM_ISP(0xE2): Read a block of RAM memory
+  * CMD_PROGRAM_RAM_ISP(0xE3): Write a block of RAM memory
   * CMD_INIT_SD_ISP(0xE6): Initialize Micro-SD Volume
   * CMD_PROGRAM_SD_ISP(0xE7): Write 512-byte block to M-SD
   * CMD_READ_SD_ISP(0xE8): Read 512-byte block from M-SD
   * CMD_PROGRAM_SD_FAT_ISP(0xE9): Write 512-byte FAT-table to M-SD
+  * CMD_READ_ANALOG_ISP(0xEA): Setup and read ADC registers
+  * CMD_TRANSFER_SPI_ISP(0xEB): Write to SPI and response full-duplex
 * Under 8192 program flash size to fit in ATMEGA2560 bootloader area
 
 ## Removed features

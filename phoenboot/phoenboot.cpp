@@ -33,7 +33,7 @@ THE SOFTWARE.
 * It maintains limited compatibility with the original full stk500v2 protocol.
 *
 * Important differences:
-* - stk500v2 commands have been added to read/write the Micro-SD card.
+* - stk500v2 commands have been added to read/write RAM/SPI/ADC/Micro-SD
 * - no support for monitoring/fuse writing
 * - command buffer size is 512 bytes instead of 256 bytes
 * - initialization delay differs due to Micro-SD/Screen initialization
