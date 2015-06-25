@@ -172,7 +172,7 @@ static const address_t APP_START_ADDR = {APP_START};
  */
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
 void flash_enable_rww();
-void flash_write_page(address_t address, const unsigned char* p);
+void flash_write_page(address_t address, const char* p);
 uint8_t openSketchFile(const char* filename, uint8_t mode);
 void changeLoadedSketch(PHN_Settings &boot_flags);
 void saveBootflags(PHN_Settings &boot_flags);
@@ -184,7 +184,7 @@ void flash_enable_rww() {
   boot_rww_enable();
 }
 
-void flash_write_page(address_t address, const unsigned char* p) {
+void flash_write_page(address_t address, const char* p) {
   /* Memory protection */
   if ((address.words[1] >= (APP_END>>16)) || address.bytes[0]) return;
 
@@ -194,7 +194,7 @@ void flash_write_page(address_t address, const unsigned char* p) {
   boot_spm_busy_wait();
 
   /* Write flash memory data */
-  const unsigned char* p_end = p + SPM_PAGESIZE;
+  const char* p_end = p + SPM_PAGESIZE;
   do {
     boot_page_fill(address.value, PTR_TO_WORD(p));
     address.value += 2;
@@ -496,8 +496,7 @@ bootloader:
       case CMD_PROGRAM_EEPROM_ISP:
         {
           /* Read the size by using the msgLength 16-pack temporarily */
-          msgLength = {msgBuffer[2], msgBuffer[1]};
-          unsigned int size = msgLength.value;
+          unsigned int size = ((uint16_pack_t) {msgBuffer[2], msgBuffer[1]}).value;
           msgLength.value = 2;
 
           /* Track whether the Micro-SD is accessed */
@@ -505,7 +504,7 @@ bootloader:
 
           /* Writing or reading? */
           if (msgCommand & 0x1) {
-            unsigned char *p = (msgBuffer + 10);
+            char *p = (char*) (msgBuffer + 10);
 
             switch (msgCommand) {
               case CMD_PROGRAM_FLASH_ISP:
@@ -768,7 +767,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
       address_t address_read = APP_START_ADDR;
       address_t address_write = APP_START_ADDR;
-      unsigned char buff[HEX_FORMAT_BYTECOUNT + 4];
+      char buff[HEX_FORMAT_BYTECOUNT + 4];
       unsigned char buff_len = 0;
       char reached_end;
       do {
@@ -783,10 +782,10 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
         /* Write a chunk of data when end is reached, or bytecount is reached */
         if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
           if (file_format == SKETCH_FMT_BIN) {
-            file_write((const char*) buff+4, buff_len);
+            file_write(buff+4, buff_len);
             
           } else {
-            file_append_hex_line(buff, buff_len, address_write.value, 0x0);
+            file_append_hex_line(buff, buff_len, address_write.words[0], 0x0);
             address_write.value += buff_len;
 
             /* Increment extended data address as needed */
@@ -810,12 +809,6 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     }
   }
 
-  /* Ensure load flag is kept specified; force-save it */
-  boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
-
-  /* Save boot flags right now to prevent saving and to keep trying to load */
-  saveBootflags(boot_flags);
-
   /* Store old flags, then reset flags to remove loading flag */
   uint8_t oldFlags = boot_flags.flags;
   boot_flags.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE);
@@ -831,6 +824,9 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     current[i] = c;
   }
 
+  /* Save boot flags right now so when resets happen, it won't end up looping trying to load */
+  saveBootflags(boot_flags);
+
   /* Initialize the frame, draw icon to load. Force it. */
   LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, boot_flags.sketch_current);
 
@@ -843,15 +839,15 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
     /* Perform loading from SD */
     unsigned char length;
     unsigned char recordtype;
-    unsigned char data_buff[SPM_PAGESIZE*2];
-    unsigned char data_page_buffer[SPM_PAGESIZE*2];
+    char data_buff[SPM_PAGESIZE*2];
+    char data_page_buffer[SPM_PAGESIZE*2];
     unsigned int data_page_buffer_len = 0;
     while (file_position < file_size) {
       LCD_write_progress(file_position, file_size, STATUS_COLOR_SDLOAD);
 
       if (file_format == SKETCH_FMT_BIN) {
         /* Raw reading from the SD in blocks of 256 bytes at a time */
-        flash_write_page(address, (unsigned char*) file_read(SPM_PAGESIZE));
+        flash_write_page(address, file_read(SPM_PAGESIZE));
         address.value += SPM_PAGESIZE;
         boot_flags.sketch_size = file_size;
         
@@ -862,8 +858,8 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
         recordtype = data_buff[3];
 
         /* Validate that the data is valid using the provided CRC */
-        unsigned int crc_expected = data_buff[length + 4];
-        unsigned int crc_read = 0;
+        unsigned char crc_expected = data_buff[length + 4];
+        unsigned char crc_read = 0;
         for (int i = 0; i < (length+4); i++) crc_read += data_buff[i];
         crc_read = (~crc_read + 1) & 0xFF;
         if (crc_expected != crc_read) {
@@ -938,5 +934,5 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
    * To guarantee that, the flash_write_page function checks for address & 0xFF.
    */
   unsigned int no_data = 0xFFFF;
-  flash_write_page(address, (unsigned char*) &no_data);
+  flash_write_page(address, (char*) &no_data);
 }
