@@ -733,27 +733,31 @@ void saveBootflags(PHN_Settings &boot_flags) {
 }
 
 uint8_t openSketchFile(const char* filename, uint8_t mode) {
-  if (!file_open(filename, "HEX", mode)) return SKETCH_FMT_NONE;
-  if (!file_size) return SKETCH_FMT_DEFAULT;
+  uint8_t fmt;
+  if (!file_open(filename, "HEX", mode)) {
+    fmt = SKETCH_FMT_NONE;
+  } else if (!file_size) {
+    fmt = SKETCH_FMT_DEFAULT;
+  } else {
+    fmt = SKETCH_FMT_HEX;
 
-  /* Read out the format of the file using the first 12 bytes */
-  uint8_t fmt = SKETCH_FMT_HEX;
-  uint8_t* data = volume_cacheCurrentBlock(0);
-  for (unsigned char i = 0; i < 12; i++) {
-    if (data[i] < 0x30 || data[i] > 0x46) {
-      fmt = SKETCH_FMT_BIN;
+    /* Read out the format of the file using the first 12 bytes */
+    uint8_t* data = volume_cacheCurrentBlock(0);
+    for (unsigned char i = 0; i < 12; i++) {
+      if (data[i] < 0x30 || data[i] > 0x46) {
+        fmt = SKETCH_FMT_BIN;
+      }
     }
   }
   return fmt;
 }
 
 void changeLoadedSketch(PHN_Settings &boot_flags) {
+  uint8_t oldFlags = boot_flags.flags;
   uint8_t file_format;
-  
+
   /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
   if (boot_flags.flags & SETTINGS_MODIFIED) {
-    boot_flags.flags &= ~SETTINGS_MODIFIED;
-    boot_flags.flags |= SETTINGS_CHANGED;
 
     /* Show saving frame */
     LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags.sketch_current);
@@ -810,8 +814,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   }
 
   /* Store old flags, then reset flags to remove loading flag */
-  uint8_t oldFlags = boot_flags.flags;
-  boot_flags.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE);
+  boot_flags.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE | SETTINGS_MODIFIED);
   boot_flags.flags |= SETTINGS_CHANGED;
 
   /* Swap current sketch with the one to load, this way you can go 'back' at any time */
