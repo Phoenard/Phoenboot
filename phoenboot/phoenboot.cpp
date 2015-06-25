@@ -936,6 +936,5 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
    * This means the start of a page is written without overwriting anything.
    * To guarantee that, the flash_write_page function checks for address & 0xFF.
    */
-  unsigned int no_data = 0xFFFF;
-  flash_write_page(address, (char*) &no_data);
+  flash_write_page(address, (const char[2]) {0xFF, 0xFF});
 }
