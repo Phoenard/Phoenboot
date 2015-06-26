@@ -894,6 +894,12 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
         /* Write full page block when end */
         if ((data_page_buffer_len >= SPM_PAGESIZE) || (recordtype == 0x1)) {
+
+          /* Make sure the buffer is padded with 0xFFFF */
+          for (int i = data_page_buffer_len; i < SPM_PAGESIZE; i++) {
+            data_page_buffer[i] = 0xFF;
+          }
+
           /* Write next page of flash memory */
           flash_write_page(address, data_page_buffer);
 
@@ -911,6 +917,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
           /* Update sketch size with the updated address position */
           boot_flags.sketch_size = address.value;
+          boot_flags.flags |= SETTINGS_CHANGED;
         }
 
         if (recordtype == 0x1) {
@@ -919,22 +926,20 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
       }
     }
   }
-  
+
   /*
-   * Wipe the first word of program data after the last page written
+   * Wipe the first page of program data after the last page written
    * This makes sure that it does not try to boot the previous program
    * It also fixes a bug where modulus 256 size programs fail loading
    * It writes a full page of program data to achieve this
-   * The first WORD will be 0xFFFF to indicate no program, however
-   * the words following it will contain 'random' RAM memory
+   * All data will contain 0xFFFF to indicate no program
    * If nothing was loaded the result is a 'wiped' program
-   *
-   * This is slightly unsafe, but since we are not writing RAM, we consider
-   * this to be a safe approach to keep binary size below 8192 bytes.
    *
    * It is important this is only done when the address is a 256 modulus (or 0)
    * This means the start of a page is written without overwriting anything.
    * To guarantee that, the flash_write_page function checks for address & 0xFF.
    */
-  flash_write_page(address, (const char[2]) {0xFF, 0xFF});
+  char buff[SPM_PAGESIZE];
+  for (int i = 0; i < SPM_PAGESIZE; i++) buff[i] = 0xFF;
+  flash_write_page(address, buff);
 }
