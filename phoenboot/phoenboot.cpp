@@ -136,6 +136,11 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
  */
 #define UART_BAUD_SELECT (((float)(F_CPU))/(((float)(BAUDRATE))*8.0)-1.0+0.5)
 
+/* Definitions for the pin 13 status LED */
+#define STATUS_LED_DDR   DDRB
+#define STATUS_LED_PORT  PORTB
+#define STATUS_LED_MASK  _BV(PB7)
+
 /*
  * How many cycles to wait before booting the program
  * Using a single set bit in the counter allows for size optimizations
@@ -259,7 +264,6 @@ int main(void) {
   unsigned char  msgStatus;
   unsigned char  c, *p;
   unsigned char  isLeave;
-  unsigned char  isLoadingNeeded;
   unsigned char  iconFlags;
   PHN_Settings   boot_flags;
 
@@ -314,14 +318,14 @@ int main(void) {
 bootloader:
 
   /* Handle load instructions from EEPROM / SELECT-button */
-  isLoadingNeeded = boot_flags.flags & SETTINGS_LOAD;
   if (!(SELECT_IN & SELECT_MASK)) {
     memcpy(boot_flags.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
-    isLoadingNeeded = SETTINGS_LOAD;
+    boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
+    saveBootflags(boot_flags);
   }
 
   /* Handle loading of a sketch from Micro-SD. Go to program right away. */
-  if (isLoadingNeeded) {
+  if (boot_flags.flags & SETTINGS_LOAD) {
     changeLoadedSketch(boot_flags);
     goto program;
   }
@@ -756,6 +760,9 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   uint8_t oldFlags = boot_flags.flags;
   uint8_t file_format;
 
+  /* Turn on LED to indicate we are saving and loading */
+  STATUS_LED_DDR |= STATUS_LED_MASK;
+
   /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
   if (boot_flags.flags & SETTINGS_MODIFIED) {
 
@@ -926,6 +933,9 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
       }
     }
   }
+
+  /* Turn off LED to indicate we are done saving and loading */
+  STATUS_LED_DDR &= ~STATUS_LED_MASK;
 
   /*
    * Wipe the first page of program data after the last page written
