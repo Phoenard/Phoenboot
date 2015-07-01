@@ -243,12 +243,7 @@ uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
   }
 }
 
-//*****************************************************************************
-
-//*  for watch dog timer startup
-void (*app_start)(void) = APP_START;
-
-//*****************************************************************************
+//************************************************************************
 
 int main(void) {
   address_t address;
@@ -262,28 +257,21 @@ int main(void) {
   unsigned char* msgBuffer = (msgBuffer_full + 5);
   unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
+  unsigned char  watchdogFlags;
   unsigned char  c, *p;
-  unsigned char  isLeave;
+  unsigned char  exitBootloader;
   unsigned char  iconFlags;
   PHN_Settings   boot_flags;
 
-  //************************************************************************
-  //*  Dec 29,  2011  <MLS> Issue #181, added watch dog timer support
-  //*  handle the watch dog timer
-  uint8_t  mcuStatusReg;
-  mcuStatusReg  =  MCUSR;
-
+  /* Handle the watch dog timer */
+  watchdogFlags = MCUSR;
   asm volatile ("cli");
   asm volatile ("wdr");
   MCUSR   =  0;
   WDTCSR |=  _BV(WDCE) | _BV(WDE);
   WDTCSR  =  0;
   asm volatile ("sei");
-  // check if WDT generated the reset, if so, go straight to app
-  if (mcuStatusReg & _BV(WDRF)) {
-    app_start();
-  }
-  //************************************************************************
+
   /* Set home button to proper INPUT */
   SELECT_DDR &= ~SELECT_MASK;
   SELECT_PORT |= SELECT_MASK;
@@ -316,6 +304,7 @@ int main(void) {
 
   /* Go here to start the bootloader, past the initialization */
 bootloader:
+  exitBootloader = 0;
 
   /* Handle load instructions from EEPROM / SELECT-button */
   if (!(SELECT_IN & SELECT_MASK)) {
@@ -327,13 +316,17 @@ bootloader:
   /* Handle loading of a sketch from Micro-SD. Go to program right away. */
   if (boot_flags.flags & SETTINGS_LOAD) {
     changeLoadedSketch(boot_flags);
-    goto program;
+    exitBootloader = 1;
+  }
+
+  /* If this is a reset caused by the watchdog timer, skip bootloader */
+  if (watchdogFlags & _BV(WDRF)) {
+    exitBootloader = 1;
   }
 
   /* Bootloader logic starts here */
-  isLeave = 0;
   address = APP_START_ADDR;
-  while (!isLeave) {
+  while (!exitBootloader) {
     /* 
      * Read in a full message into the buffer
      * Increments first time - start -1
@@ -424,7 +417,7 @@ bootloader:
         break;
 
       case CMD_LEAVE_PROGMODE_ISP:
-        isLeave = 1;
+        exitBootloader = 1;
         /* Fall-through */
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
@@ -733,6 +726,7 @@ void saveBootflags(PHN_Settings &boot_flags) {
   if (boot_flags.flags & SETTINGS_CHANGED) {
     boot_flags.flags &= ~SETTINGS_CHANGED;
     PHN_Settings_Save(boot_flags);
+    eeprom_busy_wait();
   }
 }
 
