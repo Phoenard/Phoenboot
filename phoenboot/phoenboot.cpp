@@ -99,6 +99,9 @@ THE SOFTWARE.
 #define SKETCH_FMT_BIN      2
 #define SKETCH_FMT_DEFAULT  SKETCH_FMT_HEX
 
+/* Turns extended stk500 Phoenard functions on or off */
+#define BOOT_ENABLE_EXTENDED_FUNCTIONS 1
+
 /*
  * HW and SW version, reported to AVRISP, must match version of AVRStudio
  */
@@ -418,6 +421,7 @@ bootloader:
 
       case CMD_LEAVE_PROGMODE_ISP:
         exitBootloader = 1;
+        saveBootflags(boot_flags);
         /* Fall-through */
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
@@ -433,6 +437,7 @@ bootloader:
         msgLength.value = 2;
         break;
 
+#if BOOT_ENABLE_EXTENDED_FUNCTIONS
       case CMD_READ_RAM_BYTE_ISP:
         /* Clear mask byte so output is not affected */
         msgBuffer[3] = 0x00;
@@ -466,27 +471,45 @@ bootloader:
         break;
 
       case CMD_TRANSFER_SPI_ISP:
+        /* 
+         * Write data to SPI and read the received data.  This logic
+         * supports full-duplex mode; every byte transmitted results
+         * in one byte received. If you only want to receive data,
+         * simply pad the transmit buffer with 0xFF.
+         */
+        msgLength.value = 2;
+        while (msgLength.value <= input_dataLength.value) {
+          SPDR = msgBuffer[msgLength.value-1];
+          while (!(SPSR & (1 << SPIF)));
+          msgBuffer[msgLength.value++] = SPDR;
+        }
+        break;
+
+      case CMD_INIT_SD_ISP:
         {
-          /* 
-           * Write data to SPI and read the received data.  This logic
-           * supports full-duplex mode; every byte transmitted results
-           * in one byte received. If you only want to receive data,
-           * simply pad the transmit buffer with 0xFF.
-           */
-          msgLength.value = 2;
-          while (msgLength.value <= input_dataLength.value) {
-            SPDR = msgBuffer[msgLength.value-1];
-            while (!(SPSR & (1 << SPIF)));
-            msgBuffer[msgLength.value++] = SPDR;
-          }
+          /* Set device icon */
+          iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
+          
+          /* Ensure card is initialized by opening an arbitrary (non-existent) file */
+          volume.isInitialized = 0;
+          const char name_none[1] = {0};
+          file_open(name_none, name_none, SDMIN_FILE_READ);
+          
+          /* Respond with all known volume variables */
+          msgLength.value = 2 + sizeof(CardVolume);
+          memcpy(msgBuffer + 2, &volume, sizeof(CardVolume));
           break;
         }
 
+#endif
+
+#if BOOT_ENABLE_EXTENDED_FUNCTIONS
       case CMD_READ_RAM_ISP:
       case CMD_PROGRAM_RAM_ISP:
       case CMD_READ_SD_ISP:
       case CMD_PROGRAM_SD_ISP:
       case CMD_PROGRAM_SD_FAT_ISP:
+#endif
       case CMD_READ_FLASH_ISP:
       case CMD_READ_EEPROM_ISP:
       case CMD_PROGRAM_FLASH_ISP:
@@ -513,7 +536,7 @@ bootloader:
                   address.value <<= 1;
 
                   /* Write next page of program memory */
-                  flash_write_page(address, p);
+                  flash_write_page(address, p);               
                   p += size;
 
                   /* 
@@ -627,22 +650,6 @@ bootloader:
         }
         break;
 
-      case CMD_INIT_SD_ISP:
-        {
-            /* Set device icon */
-            iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
-
-            /* Ensure card is initialized by opening an arbitrary (non-existent) file */
-            volume.isInitialized = 0;
-            const char name_none[1] = {0};
-            file_open(name_none, name_none, SDMIN_FILE_READ);
-
-            /* Respond with all known volume variables */
-            msgLength.value = 2 + sizeof(CardVolume);
-            memcpy(msgBuffer + 2, &volume, sizeof(CardVolume));
-        }
-        break;
-
       default:
         msgLength.value = 2;
         msgStatus = STATUS_CMD_FAILED;
@@ -692,7 +699,7 @@ program:
   flash_enable_rww();
 
   /* Save bootloader flags */
-  saveBootflags(boot_flags);   
+  saveBootflags(boot_flags);
 
   /* If no program available, go back to the bootloader */
   if (pgm_read_word_far(APP_START) == 0xFFFF) {
