@@ -140,9 +140,11 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
 #define UART_BAUD_SELECT (((float)(F_CPU))/(((float)(BAUDRATE))*8.0)-1.0+0.5)
 
 /* Definitions for the pin 13 status LED */
-#define STATUS_LED_DDR   DDRB
-#define STATUS_LED_PORT  PORTB
-#define STATUS_LED_MASK  _BV(PB7)
+#define STATUS_LED_DDR    DDRB
+#define STATUS_LED_PORT   PORTB
+#define STATUS_LED_MASK   _BV(PB7)
+#define STATUS_LED_ON()   STATUS_LED_DDR |= STATUS_LED_MASK
+#define STATUS_LED_OFF()  STATUS_LED_DDR &= ~STATUS_LED_MASK
 
 /*
  * How many cycles to wait before booting the program
@@ -179,18 +181,12 @@ static const address_t APP_START_ADDR = {APP_START};
  * function prototypes
  */
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
-void flash_enable_rww();
 void flash_write_page(address_t address, const char* p);
 uint8_t openSketchFile(const char* filename, uint8_t mode);
 void changeLoadedSketch(PHN_Settings &boot_flags);
 void saveBootflags(PHN_Settings &boot_flags);
 
 //*****************************************************************************
-
-void flash_enable_rww() {
-  boot_spm_busy_wait();
-  boot_rww_enable();
-}
 
 void flash_write_page(address_t address, const char* p) {
   /* Memory protection */
@@ -603,8 +599,8 @@ bootloader:
                 /* Set device icon */
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
 
-                /* Wait for any operations to finish and enable RWW */
-                flash_enable_rww();
+                /* Finish flashing, enable RWW and save bootloader flags */
+                saveBootflags(boot_flags);
 
                 /* Read FLASH, where size is in WORD space; reading 2 bytes at a time */
                 do {
@@ -695,10 +691,7 @@ bootloader:
   /* Post-programming program label to jump to, skipping the main bootloader */
 program:
 
-  /* Wait for any operations to finish and enable RWW */
-  flash_enable_rww();
-
-  /* Save bootloader flags */
+  /* Finish flashing, enable RWW and save bootloader flags */
   saveBootflags(boot_flags);
 
   /* If no program available, go back to the bootloader */
@@ -729,6 +722,10 @@ program:
 }
 
 void saveBootflags(PHN_Settings &boot_flags) {
+  /* Wait for any operations to finish and enable RWW */
+  boot_spm_busy_wait();
+  boot_rww_enable();
+
   /* Write bootloader flags to EEPROM when updated */
   if (boot_flags.flags & SETTINGS_CHANGED) {
     boot_flags.flags &= ~SETTINGS_CHANGED;
@@ -762,7 +759,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   uint8_t file_format;
 
   /* Turn on LED to indicate we are saving and loading */
-  STATUS_LED_DDR |= STATUS_LED_MASK;
+  STATUS_LED_ON();
 
   /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
   if (boot_flags.flags & SETTINGS_MODIFIED) {
@@ -936,7 +933,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   }
 
   /* Turn off LED to indicate we are done saving and loading */
-  STATUS_LED_DDR &= ~STATUS_LED_MASK;
+  STATUS_LED_OFF();
 
   /*
    * Wipe the first page of program data after the last page written
