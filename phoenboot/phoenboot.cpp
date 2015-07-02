@@ -367,6 +367,15 @@ bootloader:
     msgLength.value = 2;
     iconFlags = ICON_PCIDLE;
 
+    /* 
+     * Finish flashing, enable RWW and save bootloader flags while performing non-flash operations
+     * This ensures that settings after uploading are saved, and also ensures that the RWW
+     * is enabled when verifying flash or reading EEPROM right after uploading.
+     */
+    if (msgCommand != CMD_PROGRAM_FLASH_ISP && msgCommand != CMD_LOAD_ADDRESS) {
+      saveBootflags(boot_flags);
+    }
+
     /*
      * Now process the STK500 commands, see Atmel Appnote AVR068
      */
@@ -417,7 +426,6 @@ bootloader:
 
       case CMD_LEAVE_PROGMODE_ISP:
         exitBootloader = 1;
-        saveBootflags(boot_flags);
         /* Fall-through */
       case CMD_SET_PARAMETER:
       case CMD_ENTER_PROGMODE_ISP:
@@ -598,9 +606,6 @@ bootloader:
               case CMD_READ_FLASH_ISP:
                 /* Set device icon */
                 iconFlags = ICON_FROM_COMPUTER | ICON_TO_CHIPROM | ICON_PROGRESS_INVERT;
-
-                /* Finish flashing, enable RWW and save bootloader flags */
-                saveBootflags(boot_flags);
 
                 /* Read FLASH, where size is in WORD space; reading 2 bytes at a time */
                 do {
