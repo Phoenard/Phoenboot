@@ -320,7 +320,8 @@ bootloader:
 
   /* If this is a reset caused by the watchdog timer, skip bootloader */
   if (watchdogFlags & _BV(WDRF)) {
-    exitBootloader = 1;
+    // Goto is less size than exitBootloader = 1;
+    goto program;
   }
 
   /* Bootloader logic starts here */
@@ -448,8 +449,7 @@ bootloader:
       case CMD_PROGRAM_RAM_BYTE_ISP:
         {
           /* Access single RAM byte using an address, mask and value */
-          uint16_pack_t addr_word = {msgBuffer[2], msgBuffer[1]};
-          uint8_t* address    = addr_word.ptr;
+          uint8_t* address    = ((uint16_pack_t) {msgBuffer[2], msgBuffer[1]}).ptr;
           uint8_t  data_mask  = msgBuffer[3];
           uint8_t  data_value = msgBuffer[4];
 
@@ -695,6 +695,9 @@ bootloader:
 
   /* Post-programming program label to jump to, skipping the main bootloader */
 program:
+
+  /* Reset watchdog flags so we don't end up rapidly looping */
+  watchdogFlags = 0;
 
   /* Finish flashing, enable RWW and save bootloader flags */
   saveBootflags(boot_flags);
