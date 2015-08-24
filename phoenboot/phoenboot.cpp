@@ -475,19 +475,23 @@ bootloader:
         break;
 
       case CMD_TRANSFER_SPI_ISP:
-        /* 
-         * Write data to SPI and read the received data.  This logic
-         * supports full-duplex mode; every byte transmitted results
-         * in one byte received. If you only want to receive data,
-         * simply pad the transmit buffer with 0xFF.
-         */
-        msgLength.value = 2;
-        while (msgLength.value <= input_dataLength.value) {
-          SPDR = msgBuffer[msgLength.value-1];
-          while (!(SPSR & (1 << SPIF)));
-          msgBuffer[msgLength.value++] = SPDR;
-        }
-        break;
+        {
+          /* 
+           * Write data to SPI and read the received data.  This logic
+           * supports full-duplex mode; every byte transmitted results
+           * in one byte received. If you only want to receive data,
+           * simply pad the transmit buffer with 0xFF.
+           */
+          msgLength.value = 2;
+          uint8_t *p = msgBuffer + 2;
+          while (msgLength.value < input_dataLength.value) {
+            SPDR = *p;
+            while (!(SPSR & (1 << SPIF)));
+            *(p++) = SPDR;
+            msgLength.value++;
+          }
+          break;
+        }        
 
       case CMD_INIT_SD_ISP:
         {
