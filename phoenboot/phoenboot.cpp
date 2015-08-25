@@ -276,6 +276,16 @@ int main(void) {
   SELECT_PORT |= SELECT_MASK;
 
   /*
+   * Initialize port L:
+   * - TFTLCD_BL_MASK(5) to OUTPUT HIGH to turn on screen backlight
+   * - VS1053B_POWER(6) set OUTPUT LOW to turn off chip power
+   * - VS1053B_RESET(3) set OUTPUT LOW to put all chip pins in high impedance
+   * - VS1053B_CS(4) set OUTPUT HIGH to disable chip SPI
+   */
+  DDRL = TFTLCD_BL_MASK | _BV(6)  | _BV(3)  | _BV(4);
+  PORTL = TFTLCD_BL_MASK | _BV(4);
+
+  /*
    * Init UART
    * set baudrate and enable USART receiver and transmitter without interrupts
    */

@@ -139,10 +139,8 @@ unsigned char lcd_progress_color = LCD_BLACK;
 unsigned char lcd_icon_flags = 0; // Default state of 0 indicates not initialized!
 
 void LCD_init(void) {
-  /* Initialize backlight and data pin to output high */
+  /* Initialize data pin to output high */
   TFTLCD_DATA_DDR = 0xFF;
-  TFTLCD_BL_DDR  = TFTLCD_BL_MASK;
-  TFTLCD_BL_PORT = TFTLCD_BL_MASK;
 
   /* Initialize LCD control port register */
   DDRK  = INIT_DDR_MASK;
