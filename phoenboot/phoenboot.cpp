@@ -735,6 +735,7 @@ program:
 
   /* Turn off Micro-SD SPI */
   SD_CS_PORT |= SD_CS_MASK;
+  SPCR = 0;
 
   /* Jump to the program at address 0 */
   asm volatile("clr  r30 \n"
