@@ -733,8 +733,9 @@ program:
   /* Turn off UART */
   UART_STATUS_REG &= 0xFD;
 
-  /* Turn off Micro-SD SPI */
-  SD_CS_PORT |= SD_CS_MASK;
+  /* Turn off SPI and put Micro-SD CS High, all on Port B */
+  DDRB = SD_CS_MASK;
+  PORTB = SD_CS_MASK;
   SPCR = 0;
 
   /* Jump to the program at address 0 */
