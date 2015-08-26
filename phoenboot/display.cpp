@@ -24,6 +24,12 @@ THE SOFTWARE.
 */
 #include "display.h"
 
+/*
+ * Forces a slow initialization delay for the LCD Screen
+ * Some bugged screens properly initialize with this delay added
+ */
+#define LCD_USE_SLOW_INITIALIZATION 0
+
 /* Splits a 16-bit argument into two 8-bit bytes in memory */
 #define ARG(value)   ((value) & 0xFF), ((value) >> 8)
 
@@ -244,7 +250,11 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
   if (!lcd_icon_flags) {
 
     /* Delay needed after reset to give LCD time to initialize */
+#if LCD_USE_SLOW_INITIALIZATION
+    _delay_ms(250.0);
+#else
     _delay_ms(25.0);
+#endif
 
     /* Initialize the LCD registers */
     const uint8_t *data = LCD_REG_DATA;
