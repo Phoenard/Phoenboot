@@ -281,8 +281,10 @@ int main(void) {
    * - VS1053B_POWER(6) set OUTPUT LOW to turn off chip power
    * - VS1053B_RESET(3) set OUTPUT LOW to put all chip pins in high impedance
    * - VS1053B_CS(4) set OUTPUT HIGH to disable chip SPI
+   * - WIFI_PWR(0) set OUTPUT LOW to disable WiFi power
+   * - BLUETOOTH_RST(2) set OUTPUT LOW to keep BlueTooth reset
    */
-  DDRL = TFTLCD_BL_MASK | _BV(6)  | _BV(3)  | _BV(4);
+  DDRL = TFTLCD_BL_MASK | _BV(6)  | _BV(3)  | _BV(4) | _BV(0) | _BV(2);
   PORTL = TFTLCD_BL_MASK | _BV(4);
 
   /*
