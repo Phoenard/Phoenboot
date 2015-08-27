@@ -59,12 +59,15 @@ The compiled HEX file of the bootloader can be found in the Debug folder.
 * [Phoenard Arduino library](https://github.com/Phoenard/Phoenard)
 * [Phoenard Toolkit bootloader interface](https://github.com/Phoenard/Phoenard-Toolkit)
 * [Basic operation instructions](http://phoenard.com/basic-operation/)
+* [Latest build](http://builds.phoenard.com/firmware-latest.zip)
+* [Past builds](http://builds.phoenard.com/build_firmware/)
 
-## Version history
-Current version: v1.00
+## Versioning
+Current version: 1.1
 
-Version is updated with every major design or feature change.
-* v1.00 - Initial version
+Past versions:
+v1.1 - SPI transfer command fixed; SPI de-initialized on sketch boot
+v1.0 - Initial implementation
 
 ## License
 
