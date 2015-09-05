@@ -244,6 +244,14 @@ uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
 
 //************************************************************************
 
+void __jumpMain     (void) __attribute__ ((naked)) __attribute__ ((section (".init9")));
+
+void __jumpMain(void) {
+  asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
+  asm volatile ( "clr __zero_reg__" );  // r1 set to 0
+  asm volatile ( "jmp main");           // jump to main()
+}
+
 int main(void) {
   address_t address;
   unsigned long  input_timeoutCtr;
