@@ -120,7 +120,7 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
  */
 #define BOOTSIZE   8192
 #define APP_START  0x00000000
-#define APP_END    (FLASHEND -(2*BOOTSIZE) + 1)
+#define APP_END    (FLASHEND - BOOTSIZE + 1)
 
 /* ATMega with two USART, use UART0 */
 #define UART_BAUD_RATE_LOW       UBRR0L
@@ -242,15 +242,128 @@ uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
   }
 }
 
+/******************************************************************************
+ *********************** Self-service update routine **************************
+ ******************************************************************************
+ *
+ * This section contains a module that is able to self-service the bootloader. No
+ * function calls are used; it is one big block of inline code / assembly. Self-
+ * servicing is done by a very simple and bare UART communication protocol.
+ *
+ * Note that the UART and stack needs to be initialized before this function is run.
+ * This means an existing (working) bootloader has to be present that can jump to this
+ * function.
+ *
+ * == Self-service protocol description ==
+ * Every command starts with either a (address), r (read page)or  w (write page).
+ * Using these commands all of the flash memory area can addressed, read and programmed.
+ * The first page (the first 256 bytes) is protected and reserved for the updater. Every
+ * byte received from UART is echo'd back for verification. While reading page data, every
+ * byte received is responded with the read data at that particular page address and offset.
+ *
+ * == Self-service mode ==
+ * By performing a jump to the second word in program memory, the self-service routine
+ * loop is activated. This is done by executing the CMD_SERVICE_MODE_ISP command in the
+ * main bootloader. Resetting the device ends this loop.
+ *
+ * == Normal operation mode ==
+ * During normal program execution, the entire updater routine is skipped. This is done
+ * by jumping past the entire updater section in the first instruction executed. To
+ * guarantee that the updater routine is kept intact while flashing the bootloader, the
+ * space occupied by the updater is padded to 256 bytes exactly. This allows for a constant
+ * +256 bytes jump in the first word instruction.
+ *
+ * == Lock-out protection ==
+ * To prevent complete lock-out during flashing, it is recommended to first write a jump
+ * to the service routine for the first instruction of the second page of flash memory.
+ * This way, when the device loses connection while programming the firmware, the service
+ * routine is executed the next time the bootloader runs. One can then simply proceed to
+ * execute service routine commands as usual.
+ *
+ * == Giving the bootloader multiple lives ==
+ * Different bootloaders can be swapped between easily. Programming from a variety of data
+ * sources becomes possible, as well extending the available STK commands for specific needs.
+ *
+ * Created: 5-9-2015 17:44:28
+ * Author: Irmo van den Berge, Phoenard
+ */
+void __attribute__ ((section (".init1"))) __updater(void) {
+	/* First instruction always jumps past the entire updater page */
+	asm volatile ("rjmp +256");
+
+    /* Turn on status LED to notify we are in service mode */
+	STATUS_LED_ON();
+
+	/* Update routine starts here */
+	uint32_t addr = 0;
+	uint8_t ctr = 0;
+	uint16_t word_in = 0;
+	char mode = 0;
+	for (;;) {
+		/* Receive next byte from UART; wait forever to get it */
+		while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE)));
+		unsigned char c = UART_DATA_REG;
+
+		if (mode == 'a') {
+			/* 'a'-mode: Read the 32-bit address value */
+			addr >>= 8;
+			addr |= ((uint32_t) c << 24);
+			if (++ctr == 4) mode = 0;
+
+		} else if (mode == 'w') {
+			/* 'w'-mode: Write out a single page */
+			word_in >>= 8;
+			word_in |= ((uint16_t) c << 8);
+
+			/* Perform writing to flash here, first do a service protection check */
+			if ((addr < APP_END) || (addr >= (APP_END+256))) {
+				if (ctr == 0) {
+					boot_page_erase(addr);
+					boot_spm_busy_wait();
+				}
+				if (ctr & 0x1) boot_page_fill(addr + ctr, word_in);
+				if (ctr == 0xFF) {
+					boot_page_write(addr);
+					boot_spm_busy_wait();
+				}
+			}
+
+			/* Exit mode when 256 bytes are written */
+			if (++ctr == 0) mode = 0;
+
+		} else if (mode == 'r') {
+			/* 'r'-mode: Read next byte of program memory; stop after 256 bytes */
+			c = pgm_read_byte_far(addr + ctr);
+			if (++ctr == 0) mode = 0;
+
+		} else {
+			/* Unknown mode: set new mode */
+			mode = c;
+			ctr = 0;
+		}
+
+		/* Send back every received character for verification and timings */
+		UART_DATA_REG = c;
+		while (!(UART_STATUS_REG & (1 << UART_REGISTER_EMPTY)));
+	}
+}
+
+/* Padding required to make sure the __updater routine spans an exact 256 bytes */
+void __attribute__ ((naked)) __attribute__ ((section(".init1"))) __updater_padding(void) {
+	asm volatile (".align 8");
+}
 //************************************************************************
 
-void __jumpMain     (void) __attribute__ ((naked)) __attribute__ ((section (".init9")));
-
-void __jumpMain(void) {
-  asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
-  asm volatile ( "clr __zero_reg__" );  // r1 set to 0
-  asm volatile ( "jmp main");           // jump to main()
+/*************************************************************************
+ * Main bootloader code starts here. Optimized jump to the main function,
+ * so no vector (and main jump) table has to be stored.
+ */
+void __attribute__ ((naked)) __attribute__ ((section (".init9"))) __jumpMain(void) {
+	asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
+	asm volatile ( "clr __zero_reg__" );  // r1 set to 0
+	asm volatile ( "jmp main");           // jump to main()
 }
+//************************************************************************
 
 int main(void) {
   address_t address;
@@ -463,6 +576,10 @@ bootloader:
         break;
 
 #if BOOT_ENABLE_EXTENDED_FUNCTIONS
+      case CMD_SERVICE_MODE_ISP:
+        /* Jump to the self-update service routine */
+		asm volatile ("jmp %0" :: "i" (APP_END+2));
+
       case CMD_READ_RAM_BYTE_ISP:
         /* Clear mask byte so output is not affected */
         msgBuffer[3] = 0x00;
