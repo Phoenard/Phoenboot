@@ -112,7 +112,8 @@
         <avrgcc.compiler.optimization.PackStructureMembers>True</avrgcc.compiler.optimization.PackStructureMembers>
         <avrgcc.compiler.optimization.AllocateBytesNeededForEnum>True</avrgcc.compiler.optimization.AllocateBytesNeededForEnum>
         <avrgcc.compiler.warnings.AllWarnings>True</avrgcc.compiler.warnings.AllWarnings>
-        <avrgcc.compiler.miscellaneous.OtherFlags>-std=gnu11 -fno-jump-tables -finline-limit=9999</avrgcc.compiler.miscellaneous.OtherFlags>
+        <avrgcc.compiler.miscellaneous.OtherFlags>-fno-jump-tables -finline-limit=9999</avrgcc.compiler.miscellaneous.OtherFlags>
+        <avrgcccpp.compiler.general.ChangeSPWithoutDisablingInterrupts>True</avrgcccpp.compiler.general.ChangeSPWithoutDisablingInterrupts>
         <avrgcccpp.compiler.general.ChangeDefaultCharTypeUnsigned>True</avrgcccpp.compiler.general.ChangeDefaultCharTypeUnsigned>
         <avrgcccpp.compiler.general.ChangeDefaultBitFieldUnsigned>True</avrgcccpp.compiler.general.ChangeDefaultBitFieldUnsigned>
         <avrgcccpp.compiler.symbols.DefSymbols>
@@ -125,7 +126,7 @@
         <avrgcccpp.compiler.optimization.PackStructureMembers>True</avrgcccpp.compiler.optimization.PackStructureMembers>
         <avrgcccpp.compiler.optimization.AllocateBytesNeededForEnum>True</avrgcccpp.compiler.optimization.AllocateBytesNeededForEnum>
         <avrgcccpp.compiler.warnings.AllWarnings>True</avrgcccpp.compiler.warnings.AllWarnings>
-        <avrgcccpp.compiler.miscellaneous.OtherFlags>-std=gnu++11 -fno-jump-tables -finline-limit=9999</avrgcccpp.compiler.miscellaneous.OtherFlags>
+        <avrgcccpp.compiler.miscellaneous.OtherFlags>-fno-jump-tables -finline-limit=9999</avrgcccpp.compiler.miscellaneous.OtherFlags>
         <avrgcccpp.linker.general.DoNotUseStandardStartFiles>True</avrgcccpp.linker.general.DoNotUseStandardStartFiles>
         <avrgcccpp.linker.libraries.Libraries>
           <ListValues>

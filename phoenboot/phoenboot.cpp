@@ -361,7 +361,8 @@ void __attribute__ ((naked)) __attribute__ ((section(".init1"))) __updater_paddi
 void __attribute__ ((naked)) __attribute__ ((section (".init9"))) __jumpMain(void) {
 	asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
 	asm volatile ( "clr __zero_reg__" );  // r1 set to 0
-	asm volatile ( "jmp main");           // jump to main()
+	asm volatile ( "cli");                // disable interrupts
+	asm volatile ( "jmp main" );          // jump to main()
 }
 //************************************************************************
 
@@ -385,12 +386,10 @@ int main(void) {
 
   /* Handle the watch dog timer */
   watchdogFlags = MCUSR;
-  asm volatile ("cli");
   asm volatile ("wdr");
   MCUSR   =  0;
   WDTCSR |=  _BV(WDCE) | _BV(WDE);
   WDTCSR  =  0;
-  asm volatile ("sei");
 
   /* Set home button to proper INPUT */
   SELECT_DDR &= ~SELECT_MASK;
@@ -634,15 +633,18 @@ bootloader:
         {
           /* Set device icon */
           iconFlags = ICON_FROM_COMPUTER | ICON_TO_SD | ICON_PROGRESS_INVERT;
-          
+
           /* Ensure card is initialized by opening an arbitrary (non-existent) file */
           volume.isInitialized = 0;
-          const char name_none[1] = {0};
-          file_open(name_none, name_none, SDMIN_FILE_READ);
-          
+
+		  /* Initialize volume by supplying a guaranteed-invalid name */
+		  char* buff = (char*) msgBuffer+2;
+		  *buff = 0;
+          file_open(buff, buff, SDMIN_FILE_READ);
+
           /* Respond with all known volume variables */
           msgLength.value = 2 + sizeof(CardVolume);
-          memcpy(msgBuffer + 2, &volume, sizeof(CardVolume));
+          memcpy(buff, &volume, sizeof(CardVolume));
           break;
         }
 
@@ -681,7 +683,7 @@ bootloader:
                   address.value <<= 1;
 
                   /* Write next page of program memory */
-                  flash_write_page(address, p);               
+                  flash_write_page(address, p);
                   p += size;
 
                   /* 
