@@ -54,6 +54,18 @@ Please see the main phoenboot.cpp for important build parameters.
 This project is developed and compiled using Atmel Studio (6.2).
 The compiled HEX file of the bootloader can be found in the Debug folder.
 
+For final release versions, we make use of the Arduino AVR GCC Compiler.
+Compared to Atmel's toolchain, there is a significant difference in size.
+You can make use of the Release folder's Makefile to build the project.
+Unless the paths already match up, you will need to pass the AVR path.
+
+To build the release firmware, use the following make command while inside
+the Release folder:
+
+```
+make all AVR_PATH="C:/Program Files/Arduino/hardware/tools/avr/bin"
+```
+
 ## Links
 * [Our website](http://phoenard.com)
 * [Phoenard Arduino library](https://github.com/Phoenard/Phoenard)

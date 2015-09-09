@@ -4,6 +4,11 @@
 # Debug folder, excluding final hex file
 phoenboot/Debug/*
 
+# Release folder, only include makefile and makedep
+phoenboot/Release/*
+!phoenboot/Release/Makefile
+!phoenboot/Release/makedep.mk
+
 # =========================
 # Operating System Files
 # =========================
