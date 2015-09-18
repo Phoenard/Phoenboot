@@ -288,69 +288,69 @@ uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2) {
  * Author: Irmo van den Berge, Phoenard
  */
 void __attribute__ ((section (".init1"))) __updater(void) {
-	/* First instruction always jumps past the entire updater page */
-	asm volatile ("rjmp +256");
+  /* First instruction always jumps past the entire updater page */
+  asm volatile ("rjmp +256");
 
-    /* Turn on status LED to notify we are in service mode */
-	STATUS_LED_ON();
+  /* Turn on status LED to notify we are in service mode */
+  STATUS_LED_ON();
 
-	/* Update routine starts here */
-	uint32_t addr = 0;
-	uint8_t ctr = 0;
-	uint16_t word_in = 0;
-	char mode = 0;
-	for (;;) {
-		/* Receive next byte from UART; wait forever to get it */
-		while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE)));
-		unsigned char c = UART_DATA_REG;
+  /* Update routine starts here */
+  uint32_t addr = 0;
+  uint8_t ctr = 0;
+  uint16_t word_in = 0;
+  char mode = 0;
+  for (;;) {
+    /* Receive next byte from UART; wait forever to get it */
+    while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE)));
+    unsigned char c = UART_DATA_REG;
 
-		if (mode == 'a') {
-			/* 'a'-mode: Read the 32-bit address value */
-			addr >>= 8;
-			addr |= ((uint32_t) c << 24);
-			if (++ctr == 4) mode = 0;
+    if (mode == 'a') {
+      /* 'a'-mode: Read the 32-bit address value */
+      addr >>= 8;
+      addr |= ((uint32_t) c << 24);
+      if (++ctr == 4) mode = 0;
 
-		} else if (mode == 'w') {
-			/* 'w'-mode: Write out a single page */
-			word_in >>= 8;
-			word_in |= ((uint16_t) c << 8);
+    } else if (mode == 'w') {
+      /* 'w'-mode: Write out a single page */
+      word_in >>= 8;
+      word_in |= ((uint16_t) c << 8);
 
-			/* Perform writing to flash here, first do a service protection check */
-			if ((addr < APP_END) || (addr >= (APP_END+256))) {
-				if (ctr == 0) {
-					boot_page_erase(addr);
-					boot_spm_busy_wait();
-				}
-				if (ctr & 0x1) boot_page_fill(addr + ctr, word_in);
-				if (ctr == 0xFF) {
-					boot_page_write(addr);
-					boot_spm_busy_wait();
-				}
-			}
+      /* Perform writing to flash here, first do a service protection check */
+      if ((addr < APP_END) || (addr >= (APP_END+256))) {
+        if (ctr == 0) {
+          boot_page_erase(addr);
+          boot_spm_busy_wait();
+        }
+        if (ctr & 0x1) boot_page_fill(addr + ctr, word_in);
+        if (ctr == 0xFF) {
+          boot_page_write(addr);
+          boot_spm_busy_wait();
+        }
+      }
 
-			/* Exit mode when 256 bytes are written */
-			if (++ctr == 0) mode = 0;
+      /* Exit mode when 256 bytes are written */
+      if (++ctr == 0) mode = 0;
 
-		} else if (mode == 'r') {
-			/* 'r'-mode: Read next byte of program memory; stop after 256 bytes */
-			c = pgm_read_byte_far(addr + ctr);
-			if (++ctr == 0) mode = 0;
+    } else if (mode == 'r') {
+      /* 'r'-mode: Read next byte of program memory; stop after 256 bytes */
+      c = pgm_read_byte_far(addr + ctr);
+      if (++ctr == 0) mode = 0;
 
-		} else {
-			/* Unknown mode: set new mode */
-			mode = c;
-			ctr = 0;
-		}
+    } else {
+      /* Unknown mode: set new mode */
+      mode = c;
+      ctr = 0;
+    }
 
-		/* Send back every received character for verification and timings */
-		UART_DATA_REG = c;
-		while (!(UART_STATUS_REG & (1 << UART_REGISTER_EMPTY)));
-	}
+    /* Send back every received character for verification and timings */
+    UART_DATA_REG = c;
+    while (!(UART_STATUS_REG & (1 << UART_REGISTER_EMPTY)));
+  }
 }
 
 /* Padding required to make sure the __updater routine spans an exact 256 bytes */
 void __attribute__ ((naked)) __attribute__ ((section(".init1"))) __updater_padding(void) {
-	asm volatile (".align 8");
+  asm volatile (".align 8");
 }
 //************************************************************************
 
@@ -359,10 +359,10 @@ void __attribute__ ((naked)) __attribute__ ((section(".init1"))) __updater_paddi
  * so no vector (and main jump) table has to be stored.
  */
 void __attribute__ ((naked)) __attribute__ ((section (".init9"))) __jumpMain(void) {
-	asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
-	asm volatile ( "clr __zero_reg__" );  // r1 set to 0
-	asm volatile ( "cli");                // disable interrupts
-	asm volatile ( "jmp main" );          // jump to main()
+  asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
+  asm volatile ( "clr __zero_reg__" );  // r1 set to 0
+  asm volatile ( "cli");                // disable interrupts
+  asm volatile ( "jmp main" );          // jump to main()
 }
 //************************************************************************
 
@@ -577,7 +577,7 @@ bootloader:
 #if BOOT_ENABLE_EXTENDED_FUNCTIONS
       case CMD_SERVICE_MODE_ISP:
         /* Jump to the self-update service routine */
-		asm volatile ("jmp %0" :: "i" (APP_END+2));
+        asm volatile ("jmp %0" :: "i" (APP_END+2));
 
       case CMD_READ_RAM_BYTE_ISP:
         /* Clear mask byte so output is not affected */
@@ -630,26 +630,26 @@ bootloader:
         }        
 
       case CMD_MULTISERIAL_ISP:
-	    {
-			/*
-			 * Transfer bytes received between two UART serial ports. This allows someone
-			 * to directly communicate with WiFi/Bluetooth/GPS through USB. It is even
-			 * possible to communicate with the Sim908 using Bluetooth. This also allows
-			 * you to perform Bluetooth Serial communication using a computer.
-			 */
-			uint8_t* reg_a = (uint8_t*) (uint16_t) msgBuffer[1];
-			uint8_t* reg_b = (uint8_t*) (uint16_t) msgBuffer[2];
-			uint8_t* reg_c;
-			for (;;) {
-				if (reg_a[0] & (1 << UART_RECEIVE_COMPLETE)) {
-					reg_b[6] = reg_a[6];
-				}
-				reg_c = reg_a;
-				reg_a = reg_b;
-				reg_b = reg_c;
-			}
-			break;
-		}
+        {
+          /*
+           * Transfer bytes received between two UART serial ports. This allows someone
+           * to directly communicate with WiFi/Bluetooth/GPS through USB. It is even
+           * possible to communicate with the Sim908 using Bluetooth. This also allows
+           * you to perform Bluetooth Serial communication using a computer.
+           */
+          uint8_t* reg_a = (uint8_t*) (uint16_t) msgBuffer[1];
+          uint8_t* reg_b = (uint8_t*) (uint16_t) msgBuffer[2];
+          uint8_t* reg_c;
+          for (;;) {
+            if (reg_a[0] & (1 << UART_RECEIVE_COMPLETE)) {
+              reg_b[6] = reg_a[6];
+            }
+            reg_c = reg_a;
+              reg_a = reg_b;
+              reg_b = reg_c;
+          }
+          break;
+        }
 
       case CMD_INIT_SD_ISP:
         {
@@ -659,9 +659,9 @@ bootloader:
           /* Ensure card is initialized by opening an arbitrary (non-existent) file */
           volume.isInitialized = 0;
 
-		  /* Initialize volume by supplying a guaranteed-invalid name */
-		  char* buff = (char*) msgBuffer+2;
-		  *buff = 0;
+          /* Initialize volume by supplying a guaranteed-invalid name */
+          char* buff = (char*) msgBuffer+2;
+          *buff = 0;
           file_open(buff, buff, SDMIN_FILE_READ);
 
           /* Respond with all known volume variables */
