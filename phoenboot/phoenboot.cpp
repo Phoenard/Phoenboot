@@ -629,6 +629,28 @@ bootloader:
           break;
         }        
 
+      case CMD_MULTISERIAL_ISP:
+	    {
+			/*
+			 * Transfer bytes received between two UART serial ports. This allows someone
+			 * to directly communicate with WiFi/Bluetooth/GPS through USB. It is even
+			 * possible to communicate with the Sim908 using Bluetooth. This also allows
+			 * you to perform Bluetooth Serial communication using a computer.
+			 */
+			uint8_t* reg_a = (uint8_t*) (uint16_t) msgBuffer[1];
+			uint8_t* reg_b = (uint8_t*) (uint16_t) msgBuffer[2];
+			uint8_t* reg_c;
+			for (;;) {
+				if (reg_a[0] & (1 << UART_RECEIVE_COMPLETE)) {
+					reg_b[6] = reg_a[6];
+				}
+				reg_c = reg_a;
+				reg_a = reg_b;
+				reg_b = reg_c;
+			}
+			break;
+		}
+
       case CMD_INIT_SD_ISP:
         {
           /* Set device icon */
