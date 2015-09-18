@@ -637,8 +637,8 @@ bootloader:
            * possible to communicate with the Sim908 using Bluetooth. This also allows
            * you to perform Bluetooth Serial communication using a computer.
            */
-          uint8_t* reg_a = (uint8_t*) (uint16_t) msgBuffer[1];
-          uint8_t* reg_b = (uint8_t*) (uint16_t) msgBuffer[2];
+          uint8_t* reg_a = (uint8_t*) *reinterpret_cast<uint16_t*>(msgBuffer+1);
+          uint8_t* reg_b = (uint8_t*) *reinterpret_cast<uint16_t*>(msgBuffer+3);
           uint8_t* reg_c;
           for (;;) {
             if (reg_a[0] & (1 << UART_RECEIVE_COMPLETE)) {
