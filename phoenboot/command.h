@@ -100,7 +100,6 @@ const unsigned char  CMD_PROGRAM_SD_FAT_ISP              = 0xE9;
 const unsigned char  CMD_READ_ANALOG_ISP                 = 0xEA;
 const unsigned char  CMD_TRANSFER_SPI_ISP                = 0xEB;
 const unsigned char  CMD_MULTISERIAL_ISP                 = 0xEC;
-const unsigned char  CMD_SERVICE_MODE_ISP                = 0xEF;
 
 // *****************[ STK status constants ]***************************
 
