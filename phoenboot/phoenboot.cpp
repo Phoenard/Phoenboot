@@ -267,12 +267,26 @@ int main(void) {
   unsigned char  input_checksum;
   unsigned char* checksum_byte;
   uint16_pack_t  msgLength;
+  uint16_t       msgLength_tmp;
   unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
   unsigned char  watchdogFlags;
   unsigned char  c, *p;
   unsigned char  exitBootloader;
   unsigned char  iconFlags;
+  unsigned char  isWiFiUART = (PORTL & _BV(0));
+  unsigned char  isWirelessUART = isWiFiUART; //TODO: Bluetooth?
+  volatile uint8_t* uart_data_reg;
+  volatile uint8_t* uart_stat_reg;
+
+  /* Switch between using WiFi and USB UART */
+  if (isWirelessUART) {
+      uart_data_reg = &UDR2;
+      uart_stat_reg = &UCSR2A;
+  } else {
+      uart_data_reg = &UDR0;
+      uart_stat_reg = &UCSR0A;
+  }
 
   /* Handle the watch dog timer */
   watchdogFlags = MCUSR;
@@ -295,7 +309,7 @@ int main(void) {
    * - BLUETOOTH_RST(2) set OUTPUT LOW to keep BlueTooth reset
    */
   DDRL = TFTLCD_BL_MASK | _BV(6)  | _BV(3)  | _BV(4) | _BV(0) | _BV(2);
-  PORTL = TFTLCD_BL_MASK | _BV(4);
+  PORTL |= TFTLCD_BL_MASK | _BV(4);
 
   /*
    * Init UART
@@ -358,12 +372,12 @@ bootloader:
     do {
       /* Wait until a new byte of data is available; on timeout run program */
       input_timeoutCtr = 0;
-      while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) {
-        if ((input_timeoutCtr+=BOOT_START_DIV) & BOOT_START_MULT) goto program;
-      }
+      do {
+          if (!isWirelessUART && (input_timeoutCtr+=BOOT_START_DIV) & BOOT_START_MULT) goto program;
+      } while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
 
       /* Receive next byte of data, update the checksum and fill the buffer */
-      c = UART_DATA_REG;
+      c = *uart_data_reg;
       input_checksum ^= c;
       msgBuffer_full[++input_dataIndex] = c;
 
@@ -531,8 +545,8 @@ bootloader:
               reg_b[6] = reg_a[6];
             }
             reg_c = reg_a;
-              reg_a = reg_b;
-              reg_b = reg_c;
+            reg_a = reg_b;
+            reg_b = reg_c;
           }
           break;
         }
@@ -731,17 +745,47 @@ bootloader:
     /* Add header + checksum length to message length */
     msgLength.value += 6;
 
+    /* For WiFi Serial, first execute the CIPSEND command */
+    if (isWiFiUART) {
+
+      /* Generate command with message length parameter 000-999 */
+      static unsigned char wifi_cmd[] = "AT+CIPSEND=1,000\r\n";
+      p = wifi_cmd+15;
+      msgLength_tmp = msgLength.value;
+      do {
+        *(p--) = '0' + (msgLength_tmp % 10);
+      } while (msgLength_tmp/=10);
+
+      /* Write out the command to UART */
+      p = wifi_cmd;
+      do {
+        *uart_data_reg = *p;
+        while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
+      } while (*(++p));
+
+      /* Wait until OK is received */
+      while (*uart_data_reg != 'K');
+    }
+
     /* Send the message, update checksum as we send */
     p = msgBuffer_full;
+    msgLength_tmp = msgLength.value;
     do {
-      UART_DATA_REG = *p;    /* Start transmission of next byte */
+      *uart_data_reg = *p;   /* Start transmission of next byte */
       *checksum_byte ^= *p;  /* Update checksum */
       p++;                   /* Next byte */
-      msgLength.value--;     /* Update length to send */
 
       /* Wait for the transmit data register to be empty */
-      while (!(UART_STATUS_REG & (1 << UART_REGISTER_EMPTY)));
-    } while (msgLength.value);
+      while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
+    } while (--msgLength_tmp);
+
+    /* For WiFi, wait until response from WiFi is received to avoid echo loop */
+    if (isWiFiUART) {
+      do {
+        while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
+        c = *uart_data_reg;
+      } while (--msgLength.value);
+    }
   }
 
   /* Post-programming program label to jump to, skipping the main bootloader */
