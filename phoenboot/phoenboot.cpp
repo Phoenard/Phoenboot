@@ -178,7 +178,7 @@ typedef uint32_pack_t address_t;
 static const address_t APP_START_ADDR = {APP_START};
 
 /* Stores device settings synchronized with EEPROM */
-static PHN_Settings settings;
+PHN_Settings settings;
 
 /*
  * function prototypes
@@ -722,7 +722,7 @@ bootloader:
 
     /* Initialize the display, draw icon of current file */
     /* For some reason, putting this after the above lines reduces binary size... */
-    LCD_write_frame(iconFlags, settings.sketch_current);
+    LCD_write_frame(iconFlags);
 
     /* Store the pointer of the checksum byte and reset it to 0 */
     checksum_byte = msgBuffer + msgLength.value;
@@ -755,7 +755,7 @@ program:
 
   /* If no program available, go back to the bootloader */
   if (pgm_read_word_far(APP_START) == 0xFFFF) {
-    LCD_write_frame(ICON_FROM_NONE | ICON_TO_CHIPROM, settings.sketch_current);
+    LCD_write_frame(ICON_FROM_NONE | ICON_TO_CHIPROM);
     goto bootloader;
   }
 
@@ -763,7 +763,8 @@ program:
   /* ================================== */
 
   /* Prepare the LCD screen for further program use */
-  LCD_write_frame(ICON_PCIDLE, NULL);
+  *settings.sketch_current = 0;
+  LCD_write_frame(ICON_PCIDLE);
 
   /* Turn off UART */
   UART_STATUS_REG &= 0xFD;
@@ -824,7 +825,7 @@ void changeLoadedSketch() {
   if (settings.flags & SETTINGS_MODIFIED) {
 
     /* Show saving frame */
-    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, settings.sketch_current);
+    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH);
 
     /* Initiate the saving process to the SD */
     file_format = openCurrentSketch(SDMIN_FILE_CREATE);
@@ -895,7 +896,7 @@ void changeLoadedSketch() {
   saveBootflags();
 
   /* Initialize the frame, draw icon to load. Force it. */
-  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, settings.sketch_current);
+  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH);
 
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */

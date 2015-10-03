@@ -36,6 +36,7 @@ THE SOFTWARE.
 #include  <util/delay.h>
 #include "PHNSDMinimal.h"
 #include "PHNCore.h"
+#include "PHNSettings.h"
 
 #ifndef LCDMINIMAL_H_
 #define LCDMINIMAL_H_
@@ -167,6 +168,9 @@ THE SOFTWARE.
 #define ICON_DRAW_SKETCH       (1 << 6)
 #define ICON_PROGRESS_INVERT   (1 << 7)
 
+// Settings declared in phoenboot.cpp
+extern PHN_Settings settings;
+
 void LCD_init(void);
 void LCD_write_register(unsigned char cmd, unsigned char arg0, unsigned char arg1);
 void LCD_write_register(unsigned char cmd, unsigned int arg);
@@ -175,7 +179,7 @@ void LCD_write_byte(unsigned char data, unsigned long count);
 void LCD_write_line_raw(unsigned int x, unsigned int y, unsigned long length, unsigned char mode, unsigned char color);
 
 void LCD_write_icon(uint16_t x, unsigned char idx);
-void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile);
+void LCD_write_frame(unsigned char iconFlags);
 void LCD_write_progress(unsigned long current, unsigned long total, unsigned char color);
 void LCD_write_progress(unsigned char progress);
 

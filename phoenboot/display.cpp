@@ -243,7 +243,7 @@ void LCD_write_icon(uint16_t x, unsigned char idx) {
 }
 
 /* Clear the screen and write the frame, use NULL filename to wipe the screen only */
-void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
+void LCD_write_frame(unsigned char iconFlags) {
   uint8_t drawSketchIcon = iconFlags & ICON_DRAW_SKETCH;
 
   /* Clear the screen (frame) as needed */
@@ -267,7 +267,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
     LCD_write_line(0, 0, LCD_PIXELS, LCD_MODE_HOR, LCD_BLACK);
 
     /* If clearing, do not write a frame */
-    if (sketchIconFile == NULL) return;
+    if (!*settings.sketch_current) return;
 
     /* Draw the box frame */
     LCD_write_rect(LCD_PROG_X, LCD_PROG_Y, LCD_PROG_W + LCD_PROG_STEP, LCD_PROG_H, LCD_FRAMECOLOR);
@@ -278,7 +278,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
 
   /* Redraw sketch icon as needed */
   if (drawSketchIcon) {
-    if (file_open(sketchIconFile, "SKI", SDMIN_FILE_READ)) {
+    if (file_open(settings.sketch_current, "SKI", SDMIN_FILE_READ)) {
       /* Cache first block containing icon data */
       volume_cacheCurrentBlock(0);
     } else {
@@ -345,7 +345,7 @@ void LCD_write_frame(unsigned char iconFlags, char* sketchIconFile) {
   }
 
   /* No sketch: clear screen by wiping from top-left pixel to bottom-right pixel */
-  if (sketchIconFile == NULL) {
+  if (!*settings.sketch_current) {
     LCD_write_line(LCD_WIPE_X, LCD_WIPE_Y, LCD_WIPE_LENGTH, LCD_MODE_HOR, LCD_BLACK);
   }
 }
