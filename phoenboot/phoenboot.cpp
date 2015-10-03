@@ -177,14 +177,17 @@ typedef union {
 typedef uint32_pack_t address_t;
 static const address_t APP_START_ADDR = {APP_START};
 
+/* Stores device settings synchronized with EEPROM */
+static PHN_Settings settings;
+
 /*
  * function prototypes
  */
 uint8_t readParameter(uint8_t b0, uint8_t b1, uint8_t b2);
 void flash_write_page(address_t address, const char* p);
-uint8_t openSketchFile(const char* filename, uint8_t mode);
-void changeLoadedSketch(PHN_Settings &boot_flags);
-void saveBootflags(PHN_Settings &boot_flags);
+uint8_t openCurrentSketch(uint8_t mode);
+void changeLoadedSketch();
+void saveBootflags();
 
 //*****************************************************************************
 
@@ -255,22 +258,21 @@ void __attribute__ ((naked)) __attribute__ ((section (".init9"))) __jumpMain(voi
 //************************************************************************
 
 int main(void) {
-  address_t address;
+  static unsigned char  msgBuffer_full[600];
+  static unsigned char* msgBuffer = (msgBuffer_full + 5);
+  address_t      address;
   unsigned long  input_timeoutCtr;
   uint16_pack_t  input_dataLength;
   unsigned int   input_dataIndex;
   unsigned char  input_checksum;
   unsigned char* checksum_byte;
   uint16_pack_t  msgLength;
-  unsigned char  msgBuffer_full[600];
-  unsigned char* msgBuffer = (msgBuffer_full + 5);
   unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
   unsigned char  watchdogFlags;
   unsigned char  c, *p;
   unsigned char  exitBootloader;
   unsigned char  iconFlags;
-  PHN_Settings   boot_flags;
 
   /* Handle the watch dog timer */
   watchdogFlags = MCUSR;
@@ -304,16 +306,16 @@ int main(void) {
   UART_CONTROL_REG    =  (1 << UART_ENABLE_RECEIVER) | (1 << UART_ENABLE_TRANSMITTER);
 
   /* Read boot settings from EEPROM */
-  PHN_Settings_Load(boot_flags);
+  PHN_Settings_Load(settings);
 
   /*
    * If the current filename is corrupted, reset
    * This prevents SD corruption issues caused by saving
    */
   for (unsigned char i = 0; i < 8; i++) {
-    unsigned char c = boot_flags.sketch_current[i];
+    unsigned char c = settings.sketch_current[i];
     if (c < 32 || c >= 127) {
-      boot_flags = SETTINGS_DEFAULT;
+      settings = SETTINGS_DEFAULT;
       break;
     }
   }
@@ -327,14 +329,14 @@ bootloader:
 
   /* Handle load instructions from EEPROM / SELECT-button */
   if (!(SELECT_IN & SELECT_MASK)) {
-    memcpy(boot_flags.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
-    boot_flags.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
-    saveBootflags(boot_flags);
+    memcpy(settings.sketch_toload, SETTINGS_DEFAULT.sketch_toload, 8);
+    settings.flags |= SETTINGS_LOAD | SETTINGS_CHANGED;
+    saveBootflags();
   }
 
   /* Handle loading of a sketch from Micro-SD. Go to program right away. */
-  if (boot_flags.flags & SETTINGS_LOAD) {
-    changeLoadedSketch(boot_flags);
+  if (settings.flags & SETTINGS_LOAD) {
+    changeLoadedSketch();
     exitBootloader = 1;
   }
 
@@ -394,7 +396,7 @@ bootloader:
      * is enabled when verifying flash or reading EEPROM right after uploading.
      */
     if (msgCommand != CMD_PROGRAM_FLASH_ISP && msgCommand != CMD_LOAD_ADDRESS) {
-      saveBootflags(boot_flags);
+      saveBootflags();
     }
 
     /*
@@ -597,7 +599,7 @@ bootloader:
                    * On some programmers it pads the end of the program with 0xFFFF data
                    * We must make sure to exclude that data from the program size
                    */
-                  if (!(boot_flags.flags & SETTINGS_CHANGED) || address.value >= boot_flags.sketch_size) {
+                  if (!(settings.flags & SETTINGS_CHANGED) || address.value >= settings.sketch_size) {
                     /* Calculate program size excluding trailing 0xFFFF */
                     unsigned int size_tmp = size;
                     do {
@@ -608,8 +610,8 @@ bootloader:
                       size_tmp -= 2;
                     } while (size_tmp);
 
-                    boot_flags.sketch_size = address.value + size_tmp;
-                    boot_flags.flags |= SETTINGS_MODIFIED | SETTINGS_CHANGED;
+                    settings.sketch_size = address.value + size_tmp;
+                    settings.flags |= SETTINGS_MODIFIED | SETTINGS_CHANGED;
                   }
 
                   /* Increment address by the amount of data written out */
@@ -720,7 +722,7 @@ bootloader:
 
     /* Initialize the display, draw icon of current file */
     /* For some reason, putting this after the above lines reduces binary size... */
-    LCD_write_frame(iconFlags, boot_flags.sketch_current);
+    LCD_write_frame(iconFlags, settings.sketch_current);
 
     /* Store the pointer of the checksum byte and reset it to 0 */
     checksum_byte = msgBuffer + msgLength.value;
@@ -749,11 +751,11 @@ program:
   watchdogFlags = 0;
 
   /* Finish flashing, enable RWW and save bootloader flags */
-  saveBootflags(boot_flags);
+  saveBootflags();
 
   /* If no program available, go back to the bootloader */
   if (pgm_read_word_far(APP_START) == 0xFFFF) {
-    LCD_write_frame(ICON_FROM_NONE | ICON_TO_CHIPROM, boot_flags.sketch_current);
+    LCD_write_frame(ICON_FROM_NONE | ICON_TO_CHIPROM, settings.sketch_current);
     goto bootloader;
   }
 
@@ -778,22 +780,22 @@ program:
   for(;;);
 }
 
-void saveBootflags(PHN_Settings &boot_flags) {
+void saveBootflags() {
   /* Wait for any operations to finish and enable RWW */
   boot_spm_busy_wait();
   boot_rww_enable();
 
   /* Write bootloader flags to EEPROM when updated */
-  if (boot_flags.flags & SETTINGS_CHANGED) {
-    boot_flags.flags &= ~SETTINGS_CHANGED;
-    PHN_Settings_Save(boot_flags);
+  if (settings.flags & SETTINGS_CHANGED) {
+    settings.flags &= ~SETTINGS_CHANGED;
+    PHN_Settings_Save(settings);
     eeprom_busy_wait();
   }
 }
 
-uint8_t openSketchFile(const char* filename, uint8_t mode) {
+uint8_t openCurrentSketch(uint8_t mode) {
   uint8_t fmt;
-  if (!file_open(filename, "HEX", mode)) {
+  if (!file_open(settings.sketch_current, "HEX", mode)) {
     fmt = SKETCH_FMT_NONE;
   } else if (!file_size) {
     fmt = SKETCH_FMT_DEFAULT;
@@ -811,21 +813,21 @@ uint8_t openSketchFile(const char* filename, uint8_t mode) {
   return fmt;
 }
 
-void changeLoadedSketch(PHN_Settings &boot_flags) {
-  uint8_t oldFlags = boot_flags.flags;
+void changeLoadedSketch() {
+  uint8_t oldFlags = settings.flags;
   uint8_t file_format;
 
   /* Turn on LED to indicate we are saving and loading */
   STATUS_LED_ON();
 
   /* 0x2 = Sketch modified, save first (uploaded new sketch to FLASH) */
-  if (boot_flags.flags & SETTINGS_MODIFIED) {
+  if (settings.flags & SETTINGS_MODIFIED) {
 
     /* Show saving frame */
-    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, boot_flags.sketch_current);
+    LCD_write_frame(ICON_FROM_CHIPROM | ICON_TO_SD | ICON_DRAW_SKETCH, settings.sketch_current);
 
     /* Initiate the saving process to the SD */
-    file_format = openSketchFile(boot_flags.sketch_current, SDMIN_FILE_CREATE);
+    file_format = openCurrentSketch(SDMIN_FILE_CREATE);
     if (file_format) {
 
       /* Delete old file contents */
@@ -833,17 +835,17 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
 
       address_t address_read = APP_START_ADDR;
       address_t address_write = APP_START_ADDR;
-      char buff[HEX_FORMAT_BYTECOUNT + 4];
+      static char buff[HEX_FORMAT_BYTECOUNT + 4];
       unsigned char buff_len = 0;
       char reached_end;
       do {
-        LCD_write_progress(address_read.value, boot_flags.sketch_size, STATUS_COLOR_SDSAVE);
+        LCD_write_progress(address_read.value, settings.sketch_size, STATUS_COLOR_SDSAVE);
 
         /* Fill the buffer with data */
         PTR_TO_WORD(buff + buff_len + 4) = pgm_read_word_far(address_read.value);
         buff_len += 2;
         address_read.value += 2;
-        reached_end = (address_read.value >= boot_flags.sketch_size);
+        reached_end = (address_read.value >= settings.sketch_size);
 
         /* Write a chunk of data when end is reached, or bytecount is reached */
         if (reached_end || (buff_len == HEX_FORMAT_BYTECOUNT)) {
@@ -876,13 +878,13 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   }
 
   /* Store old flags, then reset flags to remove loading flag */
-  boot_flags.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE | SETTINGS_MODIFIED);
-  boot_flags.flags |= SETTINGS_CHANGED;
+  settings.flags &= ~(SETTINGS_LOAD | SETTINGS_LOADWIPE | SETTINGS_MODIFIED);
+  settings.flags |= SETTINGS_CHANGED;
 
   /* Swap current sketch with the one to load, this way you can go 'back' at any time */
   char c;
-  char* toload = boot_flags.sketch_toload;
-  char* current = boot_flags.sketch_current;
+  char* toload = settings.sketch_toload;
+  char* current = settings.sketch_current;
   for (unsigned char i = 0; i < 8; i++) {
     c = toload[i];
     toload[i] = current[i];
@@ -890,22 +892,22 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
   }
 
   /* Save boot flags right now so when resets happen, it won't end up looping trying to load */
-  saveBootflags(boot_flags);
+  saveBootflags();
 
   /* Initialize the frame, draw icon to load. Force it. */
-  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, boot_flags.sketch_current);
+  LCD_write_frame(ICON_FROM_SD | ICON_TO_CHIPROM | ICON_DRAW_SKETCH, settings.sketch_current);
 
   /* Open the file on SD */
   /* Don't load anything if WIPE flag is specified */
   address_t address = APP_START_ADDR;
+  static char data_buff[SPM_PAGESIZE*2];
+  static char data_page_buffer[SPM_PAGESIZE*2];
   if (!(oldFlags & SETTINGS_LOADWIPE) && 
-       (file_format = openSketchFile(boot_flags.sketch_current, SDMIN_FILE_READ)) ) {
+       (file_format = openCurrentSketch(SDMIN_FILE_READ)) ) {
 
     /* Perform loading from SD */
     unsigned char length;
     unsigned char recordtype;
-    char data_buff[SPM_PAGESIZE*2];
-    char data_page_buffer[SPM_PAGESIZE*2];
     unsigned int data_page_buffer_len = 0;
     while (file_position < file_size) {
       LCD_write_progress(file_position, file_size, STATUS_COLOR_SDLOAD);
@@ -914,7 +916,7 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
         /* Raw reading from the SD in blocks of 256 bytes at a time */
         flash_write_page(address, file_read(SPM_PAGESIZE));
         address.value += SPM_PAGESIZE;
-        boot_flags.sketch_size = file_size;
+        settings.sketch_size = file_size;
         
       } else {
         /* Reading Intel HEX format */
@@ -978,8 +980,8 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
           memcpy(data_page_buffer, data_page_buffer + SPM_PAGESIZE, data_page_buffer_len);
 
           /* Update sketch size with the updated address position */
-          boot_flags.sketch_size = address.value;
-          boot_flags.flags |= SETTINGS_CHANGED;
+          settings.sketch_size = address.value;
+          settings.flags |= SETTINGS_CHANGED;
         }
 
         if (recordtype == 0x1) {
@@ -1004,7 +1006,6 @@ void changeLoadedSketch(PHN_Settings &boot_flags) {
    * This means the start of a page is written without overwriting anything.
    * To guarantee that, the flash_write_page function checks for address & 0xFF.
    */
-  char buff[SPM_PAGESIZE];
-  for (int i = 0; i < SPM_PAGESIZE; i++) buff[i] = 0xFF;
-  flash_write_page(address, buff);
+  for (int i = 0; i < SPM_PAGESIZE; i++) data_buff[i] = 0xFF;
+  flash_write_page(address, data_buff);
 }
