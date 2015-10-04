@@ -102,6 +102,9 @@ THE SOFTWARE.
 /* Turns extended stk500 Phoenard functions on or off */
 #define BOOT_ENABLE_EXTENDED_FUNCTIONS 1
 
+/* Echoes incoming and outgoing messages to Serial from WiFi */
+#define DEBUG_WIFI_SERIAL 1
+
 /*
  * HW and SW version, reported to AVRISP, must match version of AVRStudio
  */
@@ -378,6 +381,9 @@ bootloader:
 
       /* Receive next byte of data, update the checksum and fill the buffer */
       c = *uart_data_reg;
+#if DEBUG_WIFI_SERIAL
+      if (isWiFiUART) UART_DATA_REG = c;
+#endif
       input_checksum ^= c;
       msgBuffer_full[++input_dataIndex] = c;
 
@@ -749,7 +755,7 @@ bootloader:
     if (isWiFiUART) {
 
       /* Generate command with message length parameter 000-999 */
-      static unsigned char wifi_cmd[] = "AT+CIPSEND=1,000\r\n";
+      static unsigned char wifi_cmd[] = "AT+CIPSEND=0,000\r\n";
       p = wifi_cmd+15;
       msgLength_tmp = msgLength.value;
       do {
@@ -760,6 +766,9 @@ bootloader:
       p = wifi_cmd;
       do {
         *uart_data_reg = *p;
+#if DEBUG_WIFI_SERIAL
+        UART_DATA_REG = *p;
+#endif
         while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
       } while (*(++p));
 
@@ -772,6 +781,9 @@ bootloader:
     msgLength_tmp = msgLength.value;
     do {
       *uart_data_reg = *p;   /* Start transmission of next byte */
+#if DEBUG_WIFI_SERIAL
+      if (isWiFiUART) UART_DATA_REG = *p;
+#endif
       *checksum_byte ^= *p;  /* Update checksum */
       p++;                   /* Next byte */
 
