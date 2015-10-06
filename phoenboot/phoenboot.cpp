@@ -105,6 +105,9 @@ THE SOFTWARE.
 /* Echoes incoming and outgoing messages to Serial from WiFi */
 #define DEBUG_WIFI_SERIAL 1
 
+/* Defines the byte burst size when transmitting through WiFi */
+#define WIFI_BURST_SIZE 64
+
 /*
  * HW and SW version, reported to AVRISP, must match version of AVRStudio
  */
@@ -271,10 +274,11 @@ int main(void) {
   unsigned char* checksum_byte;
   uint16_pack_t  msgLength;
   uint16_t       msgLength_tmp;
+  uint16_t       msgBurstLength;
   unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
   unsigned char  watchdogFlags;
-  unsigned char  c, *p;
+  unsigned char  c, *p, *k;
   unsigned char  exitBootloader;
   unsigned char  iconFlags;
   unsigned char  isWiFiUART = (PORTL & _BV(0));
@@ -337,6 +341,9 @@ int main(void) {
     }
   }
 
+  /* Reset address to 0 */
+  address = APP_START_ADDR;
+
   /* Initialize LCD Screen */
   LCD_init();
 
@@ -364,7 +371,6 @@ bootloader:
   }
 
   /* Bootloader logic starts here */
-  address = APP_START_ADDR;
   while (!exitBootloader) {
     /* 
      * Read in a full message into the buffer
@@ -708,7 +714,7 @@ bootloader:
                 break;
 
               case CMD_READ_RAM_ISP:
-                memcpy(p, address.ptr[0], size);
+                memcpy(p, (uint8_t*) address.ptr[0], size);
                 address.value += size;
                 break;
             }
@@ -751,53 +757,67 @@ bootloader:
     /* Add header + checksum length to message length */
     msgLength.value += 6;
 
-    /* For WiFi Serial, first execute the CIPSEND command */
-    if (isWiFiUART) {
-
-      /* Generate command with message length parameter 000-999 */
-      static unsigned char wifi_cmd[] = "AT+CIPSEND=0,000\r\n";
-      p = wifi_cmd+15;
-      msgLength_tmp = msgLength.value;
-      do {
-        *(p--) = '0' + (msgLength_tmp % 10);
-      } while (msgLength_tmp/=10);
-
-      /* Write out the command to UART */
-      p = wifi_cmd;
-      do {
-        *uart_data_reg = *p;
-#if DEBUG_WIFI_SERIAL
-        UART_DATA_REG = *p;
-#endif
-        while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
-      } while (*(++p));
-
-      /* Wait until OK is received */
-      while (*uart_data_reg != 'K');
-    }
-
-    /* Send the message, update checksum as we send */
     p = msgBuffer_full;
-    msgLength_tmp = msgLength.value;
     do {
-      *uart_data_reg = *p;   /* Start transmission of next byte */
+      msgBurstLength = msgLength.value;
+
+      /* For WiFi Serial, execute the CIPSEND command in bursts */
+      if (isWiFiUART) {
+        if (msgBurstLength > WIFI_BURST_SIZE) msgBurstLength = WIFI_BURST_SIZE;
+
+        /* Generate command with message length parameter 00-64 */
+        static unsigned char wifi_cmd[] = "AT+CIPSEND=0,00\r\n";
+        wifi_cmd[13] = '0';
+
+        k = wifi_cmd+14;
+        msgLength_tmp = msgBurstLength;
+        do {
+          *(k--) = '0' + (msgLength_tmp % 10);
+        } while (msgLength_tmp/=10);
+
+        /* Write out the command to UART */
+        k = wifi_cmd;
+        do {
+          *uart_data_reg = *k;
 #if DEBUG_WIFI_SERIAL
-      if (isWiFiUART) UART_DATA_REG = *p;
+          UART_DATA_REG = *k;
 #endif
-      *checksum_byte ^= *p;  /* Update checksum */
-      p++;                   /* Next byte */
+          while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
+        } while (*(++k));
 
-      /* Wait for the transmit data register to be empty */
-      while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
-    } while (--msgLength_tmp);
+        /* Wait until OK is received */
+        while (*uart_data_reg != 'K');
+      }
 
-    /* For WiFi, wait until response from WiFi is received to avoid echo loop */
-    if (isWiFiUART) {
+      /* Send the message, update checksum as we send */
+      msgLength_tmp = msgBurstLength;
       do {
-        while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
-        c = *uart_data_reg;
-      } while (--msgLength.value);
-    }
+        *uart_data_reg = *p;   /* Start transmission of next byte */
+#if DEBUG_WIFI_SERIAL
+        if (isWiFiUART) UART_DATA_REG = *p;
+#endif
+        *checksum_byte ^= *p;  /* Update checksum */
+        p++;                   /* Next byte */
+
+        /* Wait for the transmit data register to be empty */
+        while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
+      } while (--msgLength_tmp);
+
+      msgLength.value -= msgBurstLength;
+
+      /* For WiFi, wait until response from WiFi is received to avoid echo loop */
+      if (isWiFiUART) {
+        msgBurstLength -= 5;
+        do {
+          while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
+          c = *uart_data_reg;
+#if DEBUG_WIFI_SERIAL
+          UART_DATA_REG = c;
+#endif
+        } while (--msgBurstLength);
+      }
+
+    } while (msgLength.value);
   }
 
   /* Post-programming program label to jump to, skipping the main bootloader */
