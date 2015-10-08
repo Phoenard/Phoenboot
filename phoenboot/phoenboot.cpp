@@ -102,9 +102,6 @@ THE SOFTWARE.
 /* Turns extended stk500 Phoenard functions on or off */
 #define BOOT_ENABLE_EXTENDED_FUNCTIONS 1
 
-/* Echoes incoming and outgoing messages to Serial from WiFi */
-#define DEBUG_WIFI_SERIAL 1
-
 /* Defines the byte burst size when transmitting through WiFi */
 #define WIFI_BURST_SIZE 64
 
@@ -387,9 +384,6 @@ bootloader:
 
       /* Receive next byte of data, update the checksum and fill the buffer */
       c = *uart_data_reg;
-#if DEBUG_WIFI_SERIAL
-      if (isWiFiUART) UART_DATA_REG = c;
-#endif
       input_checksum ^= c;
       msgBuffer_full[++input_dataIndex] = c;
 
@@ -779,44 +773,51 @@ bootloader:
         k = wifi_cmd;
         do {
           *uart_data_reg = *k;
-#if DEBUG_WIFI_SERIAL
-          UART_DATA_REG = *k;
-#endif
           while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
         } while (*(++k));
 
-        /* Wait until OK is received */
+        /* Wait until newline and OK is received */
+        while (*uart_data_reg != '\n');
         while (*uart_data_reg != 'K');
       }
 
-      /* Send the message, update checksum as we send */
+      /*
+       * Update message length and to-send length. Add 8 bytes to the burst length
+       * to adjust for newline and tokens echo'd along with the data when transmitting
+       * through WiFi
+       */
       msgLength_tmp = msgBurstLength;
+      msgLength.value -= msgBurstLength;
+      msgBurstLength += 7;
+
+      /* Transmit the data */
       do {
         *uart_data_reg = *p;   /* Start transmission of next byte */
-#if DEBUG_WIFI_SERIAL
-        if (isWiFiUART) UART_DATA_REG = *p;
-#endif
         *checksum_byte ^= *p;  /* Update checksum */
         p++;                   /* Next byte */
 
         /* Wait for the transmit data register to be empty */
         while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
-      } while (--msgLength_tmp);
 
-      msgLength.value -= msgBurstLength;
+        /* Reduce the to-receive echo length for every character received */
+        if (*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)) {
+          c = *uart_data_reg;
+          msgBurstLength--;
+        }
+      } while (--msgLength_tmp);
 
       /* For WiFi, wait until response from WiFi is received to avoid echo loop */
       if (isWiFiUART) {
-        msgBurstLength -= 5;
+        /* Receive data-related response from the device */
         do {
           while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
           c = *uart_data_reg;
-#if DEBUG_WIFI_SERIAL
-          UART_DATA_REG = c;
-#endif
         } while (--msgBurstLength);
-      }
 
+        /* Wait for the SEND OK\r\n token */
+        while (*uart_data_reg != '\n');
+        UART_DATA_REG = '#';
+      }
     } while (msgLength.value);
   }
 
