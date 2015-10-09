@@ -278,6 +278,7 @@ int main(void) {
   unsigned char  c, *p, *k;
   unsigned char  exitBootloader;
   unsigned char  iconFlags;
+  unsigned char  wifiConnection = 0x00;
   unsigned char  isWiFiUART = (PORTL & _BV(0));
   unsigned char  isWirelessUART = isWiFiUART; //TODO: Bluetooth?
   volatile uint8_t* uart_data_reg;
@@ -386,6 +387,16 @@ bootloader:
       c = *uart_data_reg;
       input_checksum ^= c;
       msgBuffer_full[++input_dataIndex] = c;
+
+      /* 
+       * Character after the first comma received is our current WiFi connection.
+       * This allows for multiple ongoing communications, as well running on both
+       * UDP and TCP protocols and multiple open ports at the same time. Up to
+       * 10 connections are theoretically possible in this implementation, however
+       * the ESP8266 supports only up to 4 (id=0,1,2,3) connections at once.
+       */
+      if (wifiConnection & 0x80) wifiConnection = c;
+      if (!(wifiConnection & 0x10) && (c == ',')) wifiConnection = 0x80;
 
       /* Update the input data length using the data currently inside the buffer */
       input_dataLength.bytes[1] = msgBuffer_full[ST_MSG_SIZE_1];
@@ -760,7 +771,8 @@ bootloader:
         if (msgBurstLength > WIFI_BURST_SIZE) msgBurstLength = WIFI_BURST_SIZE;
 
         /* Generate command with message length parameter 00-64 */
-        static unsigned char wifi_cmd[] = "AT+CIPSEND=0,00\r\n";
+        unsigned char wifi_cmd[] = "AT+CIPSEND=0,00\r\n";
+        wifi_cmd[11] = wifiConnection;
         wifi_cmd[13] = '0';
 
         k = wifi_cmd+14;
@@ -819,6 +831,9 @@ bootloader:
         UART_DATA_REG = '#';
       }
     } while (msgLength.value);
+
+    /* Reset WiFi connection ID for future command execution */
+    wifiConnection = 0x00;
   }
 
   /* Post-programming program label to jump to, skipping the main bootloader */
