@@ -271,7 +271,6 @@ int main(void) {
   unsigned char* checksum_byte;
   uint16_pack_t  msgLength;
   uint16_t       msgLength_tmp;
-  uint16_t       msgBurstLength;
   unsigned char& msgCommand = msgBuffer[0];
   unsigned char  msgStatus;
   unsigned char  watchdogFlags;
@@ -387,6 +386,11 @@ bootloader:
       c = *uart_data_reg;
       input_checksum ^= c;
       msgBuffer_full[++input_dataIndex] = c;
+      
+      /* Log wireless communication to serial */
+      if (isWirelessUART) {
+          UART_DATA_REG = c;
+      }
 
       /* 
        * Character after the first comma received is our current WiFi connection.
@@ -762,75 +766,44 @@ bootloader:
     /* Add header + checksum length to message length */
     msgLength.value += 6;
 
+    /* For WiFi Serial, execute the CIPSEND command in bursts */
+    if (isWiFiUART) {
+
+      /* Generate command with message length parameter 00-64 */
+      unsigned char wifi_cmd[] = "AT+CIPSEND=0,000\r\n";
+      wifi_cmd[11] = wifiConnection;
+      wifi_cmd[13] = '0';
+      wifi_cmd[14] = '0';
+
+      k = wifi_cmd+15;
+      msgLength_tmp = msgLength.value;
+      do {
+        *(k--) = '0' + (msgLength_tmp % 10);
+      } while (msgLength_tmp/=10);
+
+      /* Write out the command to UART */
+      k = wifi_cmd;
+      do {
+        *uart_stat_reg |= (1 << UART_TRANSMIT_COMPLETE);
+        *uart_data_reg = *k;
+        while (!(*uart_stat_reg & (1 << UART_TRANSMIT_COMPLETE)));
+      } while (*(++k));
+
+      /* Wait until OK is received */
+      while (*uart_data_reg != 'K');
+    }
+
+    /* Transmit the data */
     p = msgBuffer_full;
     do {
-      msgBurstLength = msgLength.value;
+      *uart_stat_reg |= (1 << UART_TRANSMIT_COMPLETE); /* Clear TX flag */
+      *uart_data_reg = *p;   /* Start transmission of next byte */
+      *checksum_byte ^= *p;  /* Update checksum */
+      p++;                   /* Next byte */
 
-      /* For WiFi Serial, execute the CIPSEND command in bursts */
-      if (isWiFiUART) {
-        if (msgBurstLength > WIFI_BURST_SIZE) msgBurstLength = WIFI_BURST_SIZE;
-
-        /* Generate command with message length parameter 00-64 */
-        unsigned char wifi_cmd[] = "AT+CIPSEND=0,00\r\n";
-        wifi_cmd[11] = wifiConnection;
-        wifi_cmd[13] = '0';
-
-        k = wifi_cmd+14;
-        msgLength_tmp = msgBurstLength;
-        do {
-          *(k--) = '0' + (msgLength_tmp % 10);
-        } while (msgLength_tmp/=10);
-
-        /* Write out the command to UART */
-        k = wifi_cmd;
-        do {
-          *uart_data_reg = *k;
-          while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
-        } while (*(++k));
-
-        /* Wait until newline and OK is received */
-        while (*uart_data_reg != '\n');
-        while (*uart_data_reg != 'K');
-      }
-
-      /*
-       * Update message length and to-send length. Add 8 bytes to the burst length
-       * to adjust for newline and tokens echo'd along with the data when transmitting
-       * through WiFi
-       */
-      msgLength_tmp = msgBurstLength;
-      msgLength.value -= msgBurstLength;
-      msgBurstLength += 7;
-
-      /* Transmit the data */
-      do {
-        *uart_data_reg = *p;   /* Start transmission of next byte */
-        *checksum_byte ^= *p;  /* Update checksum */
-        p++;                   /* Next byte */
-
-        /* Wait for the transmit data register to be empty */
-        while (!(*uart_stat_reg & (1 << UART_REGISTER_EMPTY)));
-
-        /* Reduce the to-receive echo length for every character received */
-        if (*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)) {
-          c = *uart_data_reg;
-          msgBurstLength--;
-        }
-      } while (--msgLength_tmp);
-
-      /* For WiFi, wait until response from WiFi is received to avoid echo loop */
-      if (isWiFiUART) {
-        /* Receive data-related response from the device */
-        do {
-          while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
-          c = *uart_data_reg;
-        } while (--msgBurstLength);
-
-        /* Wait for the SEND OK\r\n token */
-        while (*uart_data_reg != '\n');
-        UART_DATA_REG = '#';
-      }
-    } while (msgLength.value);
+      /* Wait for the transmission to complete */
+      while (!(*uart_stat_reg & (1 << UART_TRANSMIT_COMPLETE)));
+    } while (--msgLength.value);
 
     /* Reset WiFi connection ID for future command execution */
     wifiConnection = 0x00;
