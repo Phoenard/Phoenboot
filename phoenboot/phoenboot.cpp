@@ -755,9 +755,14 @@ bootloader:
     /*msgBuffer_full[5] = msgCommand;*/          /* Command ID */
     msgBuffer_full[6] = msgStatus;               /* Command status */
 
-    /* Initialize the display, draw icon of current file */
-    /* For some reason, putting this after the above lines reduces binary size... */
-    LCD_write_frame(iconFlags);
+    /*
+     * Initialize the display, draw icon of current file
+     * For some reason, putting this after the above lines reduces binary size...
+     * Do not run this for the SIGN_OUT command so the bootloader can be silent skipped
+     */
+    if (msgCommand != CMD_LEAVE_PROGMODE_ISP) {
+      LCD_write_frame(iconFlags);
+    }
 
     /* Store the pointer of the checksum byte and reset it to 0 */
     checksum_byte = msgBuffer + msgLength.value;
