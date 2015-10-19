@@ -147,6 +147,7 @@ unsigned char lcd_icon_flags = 0; // Default state of 0 indicates not initialize
 void LCD_init(void) {
   /* Initialize data pin to output high */
   TFTLCD_DATA_DDR = 0xFF;
+  TFTLCD_DATA_PORT = 0x00;
 
   /* Initialize LCD control port register */
   DDRK  = INIT_DDR_MASK;
@@ -155,7 +156,7 @@ void LCD_init(void) {
   /* Reset screen */
   TFTLCD_RESET_PORT = RESET_A;
   _delay_ms(2.0);
-  TFTLCD_RESET_PORT = RESET_B;
+  TFTLCD_RESET_PORT = RESET_B & ~TFTLCD_RD_MASK;
 }
 
 void LCD_write_byte(unsigned char data, unsigned long count) {
@@ -249,6 +250,9 @@ void LCD_write_frame(unsigned char iconFlags) {
   /* Clear the screen (frame) as needed */
   if (!lcd_icon_flags) {
 
+    /* Complete the reset, assumes at least 1ms has elapsed */
+    TFTLCD_RESET_PORT = RESET_B;
+
     /* Delay needed after reset to give LCD time to initialize */
 #if LCD_USE_SLOW_INITIALIZATION
     _delay_ms(250.0);
@@ -263,7 +267,7 @@ void LCD_write_frame(unsigned char iconFlags) {
       LCD_write_register(data[0], data[1], data[2]);
     } while ((data += 3) != data_end);
 
-    /* Fill with BLACK */
+    /* Fill CGRAM with BLACK */
     LCD_write_line(0, 0, LCD_PIXELS, LCD_MODE_HOR, LCD_BLACK);
 
     /* If clearing, do not write a frame */
