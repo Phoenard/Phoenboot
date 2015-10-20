@@ -152,11 +152,11 @@ static const int  SIGNATURE_LENGTH = strlen(SIGNATURE_NAME);
 /*
  * How many cycles to wait before booting the program
  * Using a single set bit in the counter allows for size optimizations
- * Start multiplier must be a power of 2
- * Start divider can be any value
+ * A longer timeout is used for wireless communication to account for
+ * delays and losses over the network.
  */
-#define BOOT_START_MULT (1UL << 20)
-#define BOOT_START_DIV  1
+#define BOOT_START_SERIAL    (1UL << 19) /* About 0.5 seconds */
+#define BOOT_START_WIRELESS  (1UL << 26) /* About 63 seconds */
 
 /* Enables access to memory treated as an unsigned int */
 #define PTR_TO_WORD(p) (*((unsigned int*) (p)))
@@ -278,8 +278,7 @@ int main(void) {
   unsigned char  exitBootloader;
   unsigned char  iconFlags;
   unsigned char  wifiConnection = 0x00;
-  unsigned char  isWiFiUART = (PORTL & _BV(0));
-  unsigned char  isWirelessUART = isWiFiUART; //TODO: Bluetooth?
+  unsigned char  isWirelessUART = (PORTL & (_BV(0) | _BV(2)));
   volatile uint8_t* uart_data_reg;
   volatile uint8_t* uart_stat_reg;
 
@@ -379,7 +378,12 @@ bootloader:
       /* Wait until a new byte of data is available; on timeout run program */
       input_timeoutCtr = 0;
       do {
-          if (!isWirelessUART && (input_timeoutCtr+=BOOT_START_DIV) & BOOT_START_MULT) goto program;
+          input_timeoutCtr++;
+          if (isWirelessUART) {
+              if (input_timeoutCtr & BOOT_START_WIRELESS) goto program;
+          } else {
+              if (input_timeoutCtr & BOOT_START_SERIAL) goto program;
+          }
       } while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
 
       /* Receive next byte of data, update the checksum and fill the buffer */
@@ -772,7 +776,7 @@ bootloader:
     msgLength.value += 6;
 
     /* For WiFi Serial, execute the CIPSEND command in bursts */
-    if (isWiFiUART) {
+    if (PORTL & _BV(0)) {
 
       /* Generate command with message length parameter 00-64 */
       unsigned char wifi_cmd[] = "AT+CIPSEND=0,000\r\n";
@@ -794,8 +798,11 @@ bootloader:
         while (!(*uart_stat_reg & (1 << UART_TRANSMIT_COMPLETE)));
       } while (*(++k));
 
-      /* Wait until OK is received */
-      while (*uart_data_reg != 'K');
+      /* Wait until OK is received with timeout */
+      input_timeoutCtr = 0;
+      while (*uart_data_reg != 'K') {
+        if (++input_timeoutCtr & BOOT_START_WIRELESS) goto bootloader;
+      }
     }
 
     /* Transmit the data */
