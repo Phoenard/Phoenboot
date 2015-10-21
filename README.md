@@ -39,6 +39,7 @@ These features have been added to the stk500v2 protocol spec:
   * CMD_PROGRAM_SD_FAT_ISP(0xE9): Write 512-byte FAT-table to M-SD
   * CMD_READ_ANALOG_ISP(0xEA): Setup and read ADC registers
   * CMD_TRANSFER_SPI_ISP(0xEB): Write to SPI and response full-duplex
+  * CMD_MULTISERIAL_ISP(0xEC): Pipe communication between two Serial UART
 * Under 8192 program flash size to fit in ATMEGA2560 bootloader area
 
 ## Removed features
@@ -75,11 +76,12 @@ make all AVR_PATH="C:/Program Files/Arduino/hardware/tools/avr/bin"
 * [Past builds](http://builds.phoenard.com/build_firmware/)
 
 ## Versioning
-Current version: 1.1
+Current version: 1.2
 
 Past versions:
-v1.1 - SPI transfer command fixed; SPI de-initialized on sketch boot
-v1.0 - Initial implementation
+* v1.2 - Added multi-serial command and communication over WiFi/Bluetooth
+* v1.1 - SPI transfer command fixed; SPI de-initialized on sketch boot
+* v1.0 - Initial implementation
 
 ## License
 

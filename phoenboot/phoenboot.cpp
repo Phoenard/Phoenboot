@@ -59,13 +59,20 @@ THE SOFTWARE.
 * - Saving a program to a HEX/BIN file on SD, using self-written minimal SD library
 * - EEPROM settings at the back used to pass instructions to the bootloader (loaded file, to load file and status byte)
 * - Display (port and register) initialization
+* - Computer interface for SPI, memory registers and ADC
+* - Multi-serial for communication between UART devices
+* - Operation over WiFi/Bluetooth
 *
-* Compilation notes:
-* - Pass -DF_CPU=16000000UL compiler option to set CPU frequency
-* - Pass -fno-jump-tables compiler option so that goto functionality works correctly
-* - Pass -finline-limit=9999 compiler option to make sure single-use large functions get inlined properly
-* - Pass -Wl,--section-start=.text=3E000 linker option to write code into bootloader section of FLASH
-* - Setup compiler options to optimize for size
+* Compiler options:
+* -DF_CPU=16000000UL     set CPU frequency
+* -Os                    optimize for size
+* -fno-jump-tables       fixes goto functionality
+* -finline-limit=9999    inline large functions
+* -mno-interrupts        do not disable interrupts when changing stack pointer
+*
+* Linker options:
+* -nostartfiles                     exclude vector table
+* -Wl,--section-start=.text=3E000   write code into bootloader section of FLASH
 */
 #include <inttypes.h>
 #include <avr/io.h>
@@ -101,9 +108,6 @@ THE SOFTWARE.
 
 /* Turns extended stk500 Phoenard functions on or off */
 #define BOOT_ENABLE_EXTENDED_FUNCTIONS 1
-
-/* Defines the byte burst size when transmitting through WiFi */
-#define WIFI_BURST_SIZE 64
 
 /*
  * HW and SW version, reported to AVRISP, must match version of AVRStudio
