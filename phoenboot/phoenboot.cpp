@@ -388,6 +388,7 @@ bootloader:
           } else {
               if (input_timeoutCtr & BOOT_START_SERIAL) goto program;
           }
+          asm volatile ("nop");
       } while (!(*uart_stat_reg & (1 << UART_RECEIVE_COMPLETE)));
 
       /* Receive next byte of data, update the checksum and fill the buffer */
